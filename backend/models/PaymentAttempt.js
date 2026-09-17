@@ -34,6 +34,7 @@ const paymentAttemptSchema = new mongoose.Schema(
     razorpaySignature: { type: String, default: "" },
     idempotencyKey: { type: String, required: true, unique: true, index: true },
     cartFingerprint: { type: String, required: true, index: true },
+    attemptNumber: { type: Number, required: true, min: 1, max: 4 },
     activeCartFingerprint: { type: String, unique: true, sparse: true, index: true },
     status: {
       type: String,

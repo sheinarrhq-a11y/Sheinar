@@ -19,6 +19,19 @@ function sendError(res, error) {
   res.status(status).json({ error: status === 500 ? "Payment service is temporarily unavailable." : error.message });
 }
 
+function paymentConflictDetails(conflict) {
+  if (conflict.status === "initializing") {
+    return { message: "A payment attempt for this cart is being initialized. Please retry in a few seconds." };
+  }
+
+  const retryAfterSeconds = Math.max(0, Math.ceil((new Date(conflict.expiresAt).getTime() - Date.now()) / 1000));
+  return {
+    message: "A payment attempt for this cart is already in progress. Please wait up to 10 minutes until the current payment attempt expires before starting a new one.",
+    retryAfterSeconds,
+    expiresAt: conflict.expiresAt,
+  };
+}
+
 router.get("/currencies", (_, res) => {
   res.json({ currencies: [...supportedCurrencies()] });
 });
@@ -27,7 +40,10 @@ router.post("/create-order", paymentLimiter, async (req, res) => {
   try {
     const idempotencyKey = req.get("Idempotency-Key") || req.body.idempotencyKey;
     const result = await createPaymentAttempt({ ...req.body, idempotencyKey });
-    if (result.conflict) return res.status(409).json({ error: result.conflict.status === "initializing" ? "A payment attempt for this cart is being initialized. Retry shortly." : "A payment attempt for this cart is already in progress.", attemptId: result.conflict._id || undefined, status: result.conflict.status });
+    if (result.conflict) {
+      const conflict = paymentConflictDetails(result.conflict);
+      return res.status(409).json({ error: conflict.message, attemptId: result.conflict._id || undefined, status: result.conflict.status, retryAfterSeconds: conflict.retryAfterSeconds, expiresAt: conflict.expiresAt });
+    }
     if (result.existing) return res.status(409).json({ error: "This idempotency key was already used. Recover the existing payment session or start a new attempt." , attemptId: result.existing._id, status: result.existing.status });
     res.status(201).json({
       attemptId: result.attempt._id,

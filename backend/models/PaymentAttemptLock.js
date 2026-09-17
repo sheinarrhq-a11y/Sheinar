@@ -4,7 +4,7 @@ const paymentAttemptLockSchema = new mongoose.Schema(
   {
     fingerprint: { type: String, required: true, unique: true, index: true },
     attemptId: { type: mongoose.Schema.Types.ObjectId, ref: "PaymentAttempt" },
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true, index: true, expires: 0 },
   },
   { timestamps: true }
 );

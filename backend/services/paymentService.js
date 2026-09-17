@@ -17,7 +17,9 @@ const razorpay = new Razorpay({
 });
 
 const MAX_QUANTITY = 20;
-const ATTEMPT_TTL_MS = 30 * 60 * 1000;
+const MAX_PAYMENT_ATTEMPTS = 4;
+const ATTEMPT_TTL_MS = 10 * 60 * 1000;
+const BUSINESS_TIMEZONE = process.env.BUSINESS_TIMEZONE || process.env.TIMEZONE || "Asia/Kolkata";
 
 function publicError(message, status = 400) {
   const error = new Error(message);
@@ -49,7 +51,24 @@ function publicAttempt(attempt) {
     completedAt: attempt.completedAt,
     failureReason: attempt.failureReason,
     cancellationReason: attempt.cancellationReason,
+    attemptNumber: attempt.attemptNumber,
   };
+}
+
+async function expireStaleAttempts(cartFingerprint) {
+  const now = new Date();
+  const filter = {
+    expiresAt: { $lte: now },
+    status: { $in: ["created", "checkout_open", "pending"] },
+  };
+  if (cartFingerprint) filter.cartFingerprint = cartFingerprint;
+  const stale = await PaymentAttempt.find(filter).select("_id cartFingerprint").lean();
+  if (!stale.length) return;
+  await PaymentAttempt.updateMany(
+    { _id: { $in: stale.map((attempt) => attempt._id) }, status: { $in: ["created", "checkout_open", "pending"] } },
+    { $set: { status: "expired", failureReason: "Payment session expired." }, $unset: { activeCartFingerprint: 1 } }
+  );
+  await PaymentAttemptLock.deleteMany({ fingerprint: { $in: stale.map((attempt) => attempt.cartFingerprint) } });
 }
 
 function assertCustomer(customer) {
@@ -130,14 +149,26 @@ async function createPaymentAttempt({ items, customer, shippingAddress, shipping
     shippingId: shippingId || "",
     currency: money.chargedCurrency,
   })).digest("hex");
+  await expireStaleAttempts(cartFingerprint);
   const activeAttempt = await PaymentAttempt.findOne({ cartFingerprint, status: { $in: ["created", "checkout_open", "pending", "authorized"] }, expiresAt: { $gt: new Date() } }).lean();
   if (activeAttempt) return { conflict: activeAttempt };
+  const capturedAttempt = await PaymentAttempt.findOne({ cartFingerprint, status: "captured" }).lean();
+  if (capturedAttempt) return { conflict: capturedAttempt };
+  const attemptCount = await PaymentAttempt.countDocuments({ cartFingerprint, expiresAt: { $gt: new Date() } });
+  if (attemptCount >= MAX_PAYMENT_ATTEMPTS) {
+    const latestAttempt = await PaymentAttempt.findOne({ cartFingerprint, expiresAt: { $gt: new Date() } }).sort({ createdAt: -1 }).lean();
+    return { conflict: latestAttempt || { status: "attempt_limit", expiresAt: new Date(Date.now() + ATTEMPT_TTL_MS) } };
+  }
   let lock;
   try {
     lock = await PaymentAttemptLock.create({ fingerprint: cartFingerprint, expiresAt: new Date(Date.now() + ATTEMPT_TTL_MS) });
   } catch (error) {
     if (error?.code === 11000) {
       const existingLock = await PaymentAttemptLock.findOne({ fingerprint: cartFingerprint }).lean();
+      if (existingLock?.expiresAt && existingLock.expiresAt <= new Date()) {
+        await PaymentAttemptLock.deleteOne({ _id: existingLock._id, expiresAt: { $lte: new Date() } });
+        return createPaymentAttempt({ items, customer, shippingAddress, shippingId, currency, idempotencyKey });
+      }
       const lockedAttempt = existingLock?.attemptId ? await PaymentAttempt.findById(existingLock.attemptId).lean() : null;
       if (lockedAttempt) return { conflict: lockedAttempt };
       return { conflict: { _id: null, status: "initializing" } };
@@ -166,6 +197,7 @@ async function createPaymentAttempt({ items, customer, shippingAddress, shipping
     tax: calculation.tax,
     total: calculation.total,
     currency: money.chargedCurrency,
+    businessTimezone: BUSINESS_TIMEZONE,
     paymentStatus: "pending",
     status: "pending",
   });
@@ -187,6 +219,7 @@ async function createPaymentAttempt({ items, customer, shippingAddress, shipping
       shippingMethod: calculation.shippingMethod,
       idempotencyKey,
       cartFingerprint,
+      attemptNumber: attemptCount + 1,
       activeCartFingerprint: cartFingerprint,
       expiresAt: new Date(Date.now() + ATTEMPT_TTL_MS),
     });
@@ -225,7 +258,10 @@ async function verifyPayment({ attemptId, accessToken, razorpayOrderId, razorpay
   if (!attempt || !safeEqual(attempt.accessTokenHash, hashToken(accessToken))) throw publicError("Payment attempt not found.", 404);
   if (attempt.razorpayOrderId !== razorpayOrderId) throw publicError("Payment order mismatch.");
   if (attempt.status === "captured") return { attempt: publicAttempt(attempt), order: await Order.findById(attempt.localOrderId).select("orderNumber status paymentStatus total currency paidAt").lean(), idempotent: true };
-  if (attempt.expiresAt <= new Date()) throw publicError("Payment attempt has expired.");
+  if (attempt.expiresAt <= new Date()) {
+    await expireStaleAttempts(attempt.cartFingerprint);
+    throw publicError("Payment attempt has expired.");
+  }
 
   const expected = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest("hex");
   if (!safeEqual(expected, razorpaySignature)) throw publicError("Payment verification failed.");
@@ -252,10 +288,11 @@ async function verifyPayment({ attemptId, accessToken, razorpayOrderId, razorpay
 }
 
 async function finalizeCapturedAttempt(attempt) {
+  const paymentCompletedAt = new Date();
   const order = await Order.findByIdAndUpdate(
     { _id: attempt.localOrderId, paymentStatus: { $ne: "paid" } },
     {
-      $set: { paymentStatus: "paid", status: "paid", razorpayPaymentId: attempt.razorpayPaymentId, paidAt: new Date(), successfulPaymentAttemptId: attempt._id, "paymentDetails.razorpayPaymentId": attempt.razorpayPaymentId },
+      $set: { paymentStatus: "paid", status: "paid", razorpayPaymentId: attempt.razorpayPaymentId, paidAt: paymentCompletedAt, orderDate: paymentCompletedAt, businessTimezone: BUSINESS_TIMEZONE, successfulPaymentAttemptId: attempt._id, "paymentDetails.razorpayPaymentId": attempt.razorpayPaymentId },
     },
     { new: true }
   );
@@ -335,9 +372,36 @@ async function processWebhook({ eventId, eventType, payload }) {
 }
 
 async function getPaymentStatus({ attemptId, accessToken }) {
-  const attempt = await PaymentAttempt.findById(attemptId).lean();
+  let attempt = await PaymentAttempt.findById(attemptId);
   if (!attempt || !safeEqual(attempt.accessTokenHash, hashToken(accessToken))) throw publicError("Payment attempt not found.", 404);
-  const order = await Order.findById(attempt.localOrderId).select("orderNumber status paymentStatus total currency paidAt").lean();
+  if (["created", "checkout_open", "pending"].includes(attempt.status) && attempt.razorpayOrderId && typeof razorpay.orders.fetchPayments === "function") {
+    try {
+      const gatewayPayments = await razorpay.orders.fetchPayments(attempt.razorpayOrderId);
+      const payment = gatewayPayments?.items?.find((entry) => ["authorized", "captured"].includes(entry.status) && entry.amount === attempt.gatewayAmount && entry.currency === attempt.chargedCurrency);
+      if (payment) {
+        const reusedPayment = await PaymentAttempt.findOne({ razorpayPaymentId: payment.id, _id: { $ne: attempt._id } }).lean();
+        if (!reusedPayment) {
+          attempt.razorpayPaymentId = payment.id;
+          attempt.status = payment.status === "captured" ? "captured" : "authorized";
+          attempt.capturedAt = payment.status === "captured" ? (attempt.capturedAt || new Date()) : undefined;
+          attempt.completedAt = payment.status === "captured" ? (attempt.completedAt || new Date()) : undefined;
+          if (payment.status === "captured") attempt.activeCartFingerprint = undefined;
+          await attempt.save();
+          if (payment.status === "captured") {
+            await PaymentAttemptLock.deleteOne({ fingerprint: attempt.cartFingerprint });
+            return finalizeCapturedAttempt(attempt);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Razorpay status reconciliation failed:", error.message);
+    }
+  }
+  if (attempt.expiresAt <= new Date() && ["created", "checkout_open", "pending"].includes(attempt.status)) {
+    await expireStaleAttempts(attempt.cartFingerprint);
+    attempt = await PaymentAttempt.findById(attemptId);
+  }
+  const order = await Order.findById(attempt.localOrderId).select("orderNumber status paymentStatus total currency paidAt orderDate businessTimezone").lean();
   return { attempt: publicAttempt(attempt), order };
 }
 

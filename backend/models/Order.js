@@ -67,6 +67,8 @@ const orderSchema = new mongoose.Schema(
       default: "pending",
     },
     currency:          { type: String, default: "INR" },
+    orderDate:         { type: Date },
+    businessTimezone:  { type: String, default: "Asia/Kolkata" },
     razorpayOrderId:   { type: String, default: "" },
     razorpayPaymentId: { type: String, default: "" },
     paymentStatus:     { type: String, enum: ["pending", "paid", "failed"], default: "pending" },

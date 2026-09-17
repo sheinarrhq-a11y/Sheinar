@@ -17,6 +17,12 @@ const FILTERS = ["all", ...ORDER_STATUSES] as const;
 const fmt = (n: number, c = "INR") =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: c, maximumFractionDigits: 0 }).format(n);
 
+const fmtOrderDate = (order: AdminOrder) =>
+  new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+    timeZone: order.businessTimezone || "Asia/Kolkata",
+  }).format(new Date(order.orderDate || order.paidAt || order.createdAt));
+
 export default function OrdersTab({ onUnauth }: { onUnauth: () => void }) {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [total, setTotal] = useState(0);
@@ -137,7 +143,7 @@ export default function OrdersTab({ onUnauth }: { onUnauth: () => void }) {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-neutral-500 text-xs whitespace-nowrap">
-                        {new Date(o.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                        {fmtOrderDate(o)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`text-[10px] tracking-[1.5px] uppercase px-2.5 py-1 border rounded-full ${STATUS_COLORS[o.status]}`}>{o.status}</span>

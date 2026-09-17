@@ -255,6 +255,9 @@ export type AdminOrder = {
   estimatedDeliveryDate?: string;
   razorpayOrderId?: string;
   createdAt: string;
+  paidAt?: string;
+  orderDate?: string;
+  businessTimezone?: string;
 };
 
 // ── Types ─────────────────────────────────────────────────

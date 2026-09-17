@@ -14,7 +14,7 @@ process.env.JWT_SECRET = "test_jwt_secret";
 process.env.RAZORPAY_SUPPORTED_CURRENCIES = "INR,USD,EUR,JPY";
 process.env.FX_RATES_JSON = JSON.stringify({ INR: 1, USD: 0.01, EUR: 0.01, JPY: 1.5 });
 
-const gatewayState = { orders: [], payments: new Map() };
+const gatewayState = { orders: [], payments: new Map(), orderPayments: new Map() };
 class FakeRazorpay {
   constructor() {
     this.orders = {
@@ -23,6 +23,7 @@ class FakeRazorpay {
         gatewayState.orders.push(order);
         return order;
       },
+      fetchPayments: async (orderId) => ({ items: gatewayState.orderPayments.get(orderId) || [] }),
     };
     this.payments = {
       fetch: async (paymentId) => gatewayState.payments.get(paymentId),
@@ -193,6 +194,39 @@ test("cancelled attempts can be retried but cannot cancel a captured attempt", a
   const lateCancel = await request(app).post("/api/payments/cancel").set("X-Payment-Access-Token", retry.body.accessToken).send({ attemptId: retry.body.attemptId });
   assert.equal(verified.status, 200);
   assert.equal(lateCancel.body.unchanged, true);
+});
+
+test("four cancelled attempts block a fifth until the ten-minute window expires", async () => {
+  const customer = { firstName: "Limit", lastName: "Buyer", email: "attempt-limit@example.com" };
+  const attempts = [];
+  for (let index = 0; index < 4; index += 1) {
+    const created = await createAttempt({ customer });
+    assert.equal(created.status, 201);
+    attempts.push(created);
+    const cancelled = await request(app).post("/api/payments/cancel")
+      .set("X-Payment-Access-Token", created.body.accessToken)
+      .send({ attemptId: created.body.attemptId });
+    assert.equal(cancelled.status, 200);
+  }
+  const blocked = await createAttempt({ customer });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.error, "A payment attempt for this cart is already in progress. Please wait up to 10 minutes until the current payment attempt expires before starting a new one.");
+
+  await PaymentAttempt.updateMany({ _id: { $in: attempts.map((attempt) => attempt.body.attemptId) } }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
+  const unlocked = await createAttempt({ customer });
+  assert.equal(unlocked.status, 201);
+  assert.equal(unlocked.body.attemptId !== attempts[0].body.attemptId, true);
+});
+
+test("status reconciliation captures a payment after browser refresh", async () => {
+  const created = await createAttempt({ customer: { firstName: "Refresh", lastName: "Buyer", email: "refresh-payment@example.com" } });
+  const paymentId = "pay_after_refresh";
+  gatewayState.orderPayments.set(created.body.razorpayOrderId, [{ id: paymentId, order_id: created.body.razorpayOrderId, amount: created.body.amount, currency: "INR", status: "captured" }]);
+  const status = await request(app).get(`/api/payments/status/${created.body.attemptId}`).set("X-Payment-Access-Token", created.body.accessToken);
+  assert.equal(status.status, 200);
+  assert.equal(status.body.order.paymentStatus, "paid");
+  assert.equal(status.body.attempt.status, "captured");
+  assert.equal(await Order.countDocuments({ "customer.email": "refresh-payment@example.com", paymentStatus: "paid" }), 1);
 });
 
 test("concurrent create requests allow one active attempt and return conflict for the other", async () => {
