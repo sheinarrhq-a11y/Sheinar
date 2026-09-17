@@ -1,0 +1,465 @@
+SHEINAR PAYMENT FLOW WORKTREE
+==============================
+
+This document shows the implemented payment flow, conditional branches, and
+expected behavior for success, failure, cancellation, retries, concurrency,
+webhooks, duplicate payments, refunds, and security cases.
+
+
+1. MAIN CONDITIONAL PAYMENT FLOW
+================================
+
+                         +----------------------+
+                         | Customer opens cart |
+                         +----------+-----------+
+                                    |
+                                    v
+                         +----------------------+
+                         | Select currency and  |
+                         | enter address        |
+                         +----------+-----------+
+                                    |
+                                    v
+                    +-------------------------------+
+                    | POST /api/payments/create-order|
+                    +---------------+---------------+
+                                    |
+                   +----------------+----------------+
+                   |                                 |
+                   v                                 v
+        +-------------------------+       +-------------------------+
+        | Request valid?          | NO    | Request invalid         |
+        | Cart, customer, address |------>| Return 400               |
+        | and idempotency key     |       | Do not call Razorpay     |
+        +------------+------------+       +-------------------------+
+                     | YES
+                     v
+        +-------------------------------+
+        | Backend loads product prices  |
+        | and validates stock/status     |
+        +---------------+---------------+
+                        |
+              +---------+----------+
+              |                    |
+              v                    v
+     +----------------+   +-----------------------+
+     | Product valid? |NO | Product unavailable,  |
+     | Quantity valid?|-->| sold out, or invalid |
+     +--------+-------+   | quantity: return 400 |
+              | YES       +-----------------------+
+              v
+        +-------------------------------+
+        | Backend calculates trusted    |
+        | subtotal, shipping and total  |
+        +---------------+---------------+
+                        |
+                        v
+        +-------------------------------+
+        | Is currency supported and     |
+        | enabled in backend allowlist? |
+        +---------------+---------------+
+                        |
+              +---------+----------+
+              |                    |
+              v                    v
+       +-------------+     +-----------------------+
+       | YES         | NO  | Return 400            |
+       | Convert     |---->| Unsupported currency |
+       | amount      |     | No gateway order     |
+       +------+------+     +-----------------------+
+              |
+              v
+        +-------------------------------+
+        | Atomic cart fingerprint lock  |
+        | prevents duplicate attempts   |
+        +---------------+---------------+
+                        |
+              +---------+----------+
+              |                    |
+              v                    v
+       +-------------+     +-----------------------+
+       | Lock won    |     | Lock already exists  |
+       | Continue    |     | Return 409          |
+       +------+------+     | Existing attempt   |
+              |            +-----------------------+
+              v
+        +-------------------------------+
+        | Create local Order and        |
+        | PaymentAttempt                |
+        +---------------+---------------+
+                        |
+                        v
+        +-------------------------------+
+        | Create Razorpay Order with    |
+        | server amount and currency   |
+        +---------------+---------------+
+                        |
+              +---------+----------+
+              |                    |
+              v                    v
+       +-------------+     +-----------------------+
+       | Gateway OK  |     | Gateway error/timeout |
+       | Return safe |     | Mark attempt failed  |
+       | checkout    |     | Release lock         |
+       | details     |     | Return safe 500     |
+       +------+------+     +-----------------------+
+              |
+              v
+        +-------------------------------+
+        | Razorpay Checkout opens      |
+        +---------------+---------------+
+                        |
+        +---------------+----------------+
+        |                                |
+        v                                v
++------------------+             +------------------+
+| Customer pays    |             | Customer closes  |
+| Checkout success |             | or payment fails |
++--------+---------+             +--------+---------+
+         |                                |
+         v                                v
++--------------------------+     +--------------------------+
+| POST /api/payments/verify|     | POST /api/payments/cancel|
++------------+-------------+     +------------+-------------+
+             |                                |
+             v                                v
++--------------------------+     +--------------------------+
+| Verify access token,     |     | If attempt is created,   |
+| signature, order ID,    |     | open, or pending:       |
+| payment ID, amount,     |     | mark cancelled          |
+| currency and gateway    |     |                          |
+| status                  |     | If authorized/captured:|
++------------+-------------+     | leave unchanged        |
+             |                   +--------------------------+
+     +-------+--------+
+     |                |
+     v                v
++-----------+  +----------------------+
+| Captured  |  | Authorized/pending   |
+|           |  | Not final captured   |
++-----+-----+  +----------+-----------+
+      |                   |
+      v                   v
++----------------+  +------------------------+
+| Atomic order   |  | Return pending status  |
+| paid update    |  | Do not fulfil         |
++-------+--------+  | Do not charge again   |
+        |           +------------------------+
+        v
++-------------------------------+
+| Fulfilment guard checks       |
+| fulfilmentProcessed = false  |
++---------------+---------------+
+                |
+       +--------+---------+
+       |                  |
+       v                  v
++--------------+  +-----------------------+
+| First success|  | Already fulfilled     |
+| Send one     |  | Skip duplicate email  |
+| confirmation |  | and fulfilment       |
++--------------+  +-----------------------+
+
+
+2. WEBHOOK CONDITIONAL FLOW
+===========================
+
+Razorpay sends webhook
+        |
+        v
++-------------------------------+
+| Preserve raw request body    |
++---------------+---------------+
+                |
+                v
++-------------------------------+
+| Signature and event ID valid?|
++---------------+---------------+
+                |
+       +--------+---------+
+       |                  |
+       v                  v
+    NO |               YES
++-------------+   +-------------------------+
+| Return 400  |   | Event ID already seen?  |
+| Ignore body |   +-----------+-------------+
++-------------+               |
+                    +---------+---------+
+                    |                   |
+                    v                   v
+                 YES                   NO
+          +---------------+   +-------------------------+
+          | Return safe   |   | Find PaymentAttempt by  |
+          | duplicate     |   | Razorpay order ID      |
+          +---------------+   +-----------+-------------+
+                                          |
+                              +-----------+-----------+
+                              |                       |
+                              v                       v
+                       +-------------+       +------------------+
+                       | Attempt     |       | Unknown attempt  |
+                       | found       |       | Mark ignored     |
+                       +------+------+       +------------------+
+                              |
+             +----------------+----------------+
+             |                                 |
+             v                                 v
++--------------------------+       +--------------------------+
+| payment.captured or     |       | payment.failed          |
+| order.paid and captured |       |                          |
++------------+-------------+       +------------+-------------+
+             |                                |
+             v                                v
++--------------------------+       +--------------------------+
+| Check payment ID reuse  |       | If not already captured, |
+| and amount/currency     |       | mark attempt failed     |
++------------+-------------+       | release active lock    |
+             |                    +--------------------------+
+    +--------+---------+
+    |                  |
+    v                  v
++-----------+  +-------------------------+
+| New ID    |  | Existing payment ID    |
+| Finalize  |  | Mark duplicate        |
+| captured  |  | Do not fulfil twice   |
++-----+-----+  +-------------------------+
+      |
+      v
++-------------------------------+
+| Atomic paid transition and   |
+| one-time fulfilment guard    |
++-------------------------------+
+
+
+3. MULTIPLE TRAFFIC / MULTIPLE INITIATION CASES
+================================================
+
+CASE A: User double-clicks Pay
+------------------------------
+Condition:
+  Two create-order requests arrive almost together.
+
+Expected:
+  - Same cart fingerprint is generated.
+  - MongoDB PaymentAttemptLock allows only one winner.
+  - Winner receives HTTP 201 with one Razorpay order.
+  - Loser receives HTTP 409.
+  - No second active Razorpay order is created.
+
+CASE B: Two browser tabs start payment
+--------------------------------------
+Condition:
+  Tab A and Tab B use different idempotency keys for the same cart.
+
+Expected:
+  - Cart fingerprint is the same.
+  - One request receives 201.
+  - Other request receives 409.
+  - Tab B checks payment status instead of opening another charge.
+
+CASE C: Same idempotency key is replayed
+----------------------------------------
+Condition:
+  Network retry sends the same Idempotency-Key again.
+
+Expected:
+  - Backend returns 409 for the already-used key when the original opaque
+    access token is unavailable.
+  - No new local order.
+  - No new Razorpay order.
+
+CASE D: First request fails at Razorpay
+---------------------------------------
+Condition:
+  Local attempt exists but gateway order creation fails.
+
+Expected:
+  - Attempt marked failed.
+  - Active lock released.
+  - A later retry can create a fresh attempt.
+  - No order is marked paid.
+
+CASE E: One tab pays, another tab cancels
+-----------------------------------------
+Condition:
+  Tab A captures payment. Tab B submits an old cancellation.
+
+Expected:
+  - Tab B can change only its own attempt if it is still cancellable.
+  - Captured attempt remains captured.
+  - Local order remains paid.
+  - Fulfilment executes once.
+
+CASE F: Two genuine captured payments
+-------------------------------------
+Condition:
+  Two different Razorpay payment IDs become captured for one local order.
+
+Expected:
+  - First capture atomically marks the order paid.
+  - Second payment is marked duplicate.
+  - Second payment is not silently ignored.
+  - Admin reconciliation/refund is required.
+  - Fulfilment and confirmation email run once.
+
+
+4. STALE SESSION AND RECOVERY CASES
+===================================
+
+CASE A: Browser closes after payment
+------------------------------------
+1. Payment may have been captured.
+2. Browser does not receive callback.
+3. Session token remains in sessionStorage.
+4. On refresh, frontend calls GET /api/payments/status/:attemptId.
+5. If paid, show confirmation and clear session.
+6. If pending, show checking message and do not charge again.
+7. If failed/cancelled, allow a new attempt.
+
+CASE B: Old INR tab and new USD tab
+-----------------------------------
+- Each attempt stores immutable currency and amount.
+- INR attempt cannot verify USD payment.
+- USD attempt cannot verify INR payment.
+- Currency changes never mutate existing Razorpay orders.
+
+CASE C: Old failure arrives after success
+-----------------------------------------
+- Failed webhook or stale browser callback cannot downgrade paid order.
+- PaymentAttempt and Order states remain terminal/paid.
+
+CASE D: Payment ID reused across orders
+---------------------------------------
+- Server finds existing PaymentAttempt with that payment ID.
+- New attempt becomes duplicate.
+- Verification returns conflict.
+- No cross-order fulfilment.
+
+
+5. AMOUNT AND SECURITY TEST CASES
+=================================
+
++----+--------------------------------------+----------------------------+
+| #  | Test                                 | Expected result            |
++----+--------------------------------------+----------------------------+
+| 1  | Frontend changes price to 1          | Backend uses DB price      |
+| 2  | Frontend sends price 0               | Ignored/rejected           |
+| 3  | Frontend sends negative quantity     | 400 rejected               |
+| 4  | Frontend sends quantity 0            | 400 rejected               |
+| 5  | Frontend sends huge quantity         | 400 rejected               |
+| 6  | Frontend changes total               | Backend recalculates       |
+| 7  | Frontend changes shipping fee        | Backend recalculates       |
+| 8  | Frontend changes tax/discount        | Not trusted                |
+| 9  | Frontend sends NaN/Infinity          | 400 rejected               |
+| 10 | Invalid product ID                   | 400 rejected               |
+| 11 | Sold-out product                     | 400 rejected               |
+| 12 | Unsupported currency                 | 400 rejected               |
+| 13 | Currency mismatch at verification    | 400 rejected               |
+| 14 | Amount mismatch at verification      | 400 rejected               |
+| 15 | Fake payment signature               | 400 rejected               |
+| 16 | Fake payment ID                      | 400 rejected               |
+| 17 | Fake Razorpay order ID               | 400 rejected               |
+| 18 | Verification without payment        | 400 rejected               |
+| 19 | Status with wrong access token       | 404 rejected               |
+| 20 | Refund without admin JWT             | 401 rejected               |
+| 21 | Malformed JSON                       | 400 rejected               |
+| 22 | Oversized request body               | 413 rejected               |
+| 23 | Replayed webhook event ID            | Safe duplicate response    |
+| 24 | Modified webhook body                | 400 rejected               |
+| 25 | Response inspection                  | No token hash/customer data|
++----+--------------------------------------+----------------------------+
+
+
+6. PAYMENT SUCCESS AND RETURN CASES
+===================================
+
+SUCCESS:
+  Razorpay captured + server verification succeeds
+  -> PaymentAttempt = captured
+  -> Order.paymentStatus = paid
+  -> Order.status = paid
+  -> successfulPaymentAttemptId saved
+  -> fulfilmentProcessed set once
+  -> one confirmation notification scheduled
+  -> frontend shows Order Confirmed
+
+PENDING:
+  Gateway status is authorized or uncertain
+  -> attempt remains non-final/pending or authorized
+  -> order does not fulfil
+  -> frontend shows Checking payment status
+  -> customer is not immediately charged again
+
+FAILED:
+  Gateway reports failed or verification fails
+  -> attempt = failed
+  -> order remains unpaid
+  -> active lock released
+  -> customer can retry with a new attempt
+
+CANCELLED:
+  Customer closes Checkout before capture
+  -> attempt = cancelled
+  -> order remains unpaid
+  -> customer can retry
+
+DUPLICATE:
+  A second payment is captured for an already-paid order
+  -> attempt = duplicate
+  -> order remains paid
+  -> no second fulfilment
+  -> refund/manual reconciliation required
+
+REFUNDED:
+  Authorized admin refund succeeds
+  -> PaymentRefund = processed
+  -> Order.refundedAmount updated
+  -> refundStatus = partially_refunded or refunded
+  -> original payment history remains intact
+
+
+7. TEST COMMANDS
+================
+
+Backend:
+  cd backend
+  npm test
+
+Frontend unit tests:
+  cd my-app
+  npm test
+
+Frontend production build:
+  cd my-app
+  npm run build
+
+Playwright E2E, after installing Chromium:
+  cd my-app
+  npx playwright install chromium
+  npm run test:e2e
+
+E2E must use mocked payment endpoints or Razorpay Test Mode. Never use real
+customer card numbers, CVV, OTPs, or live payment credentials in automation.
+
+
+8. RELEASE SAFETY CHECKLIST
+===========================
+
+[ ] Rotate every secret currently present in backend/.env.
+[ ] Add backend/.env to ignore rules and secret management.
+[ ] Configure RAZORPAY_WEBHOOK_SECRET.
+[ ] Configure only account-enabled currencies.
+[ ] Confirm raw webhook endpoint is public HTTPS.
+[ ] Run npm test in backend.
+[ ] Run npm test in my-app.
+[ ] Run npm run build in my-app.
+[ ] Install Chromium and run npm run test:e2e.
+[ ] Complete Razorpay Test Mode success/failure/cancel/retry tests.
+[ ] Complete two-tab and duplicate-payment tests.
+[ ] Complete webhook replay and refund tests.
+[ ] Repair existing ESLint configuration and require lint before release.
+[ ] Verify no secret appears in frontend build output.
+[ ] Verify monitoring for webhook failures, duplicate payments, refunds, and
+    fulfilment failures.
+
+END OF PAYMENT FLOW WORKTREE

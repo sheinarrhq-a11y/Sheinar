@@ -1,0 +1,23 @@
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.test.example
+
+# Dependencies and generated output
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+coverage/
+**/coverage/
+
+# Test artifacts
+my-app/test-results/
+playwright-report/
+
+# Logs and local tooling
+*.log
+.vscode/
+.idea/
+.DS_Store

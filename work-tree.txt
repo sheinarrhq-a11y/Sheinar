@@ -1,0 +1,636 @@
+================================================================================
+                           PROJECT WORK TREE
+================================================================================
+
+SHEINAR - Full Stack E-Commerce Platform
+D:\Kaushal NEw\sample-2-new-kaushal_bakcned_admin/
+│
+├── 📄 DEPLOYMENT.md                    (Deployment guide & setup instructions)
+│
+├── workflow.txt                        (THIS FILE - Workflow documentation)
+│
+├── 📦 BACKEND (Express.js + MongoDB)
+│   ├── 📄 server.js                   (Main server entry point)
+│   ├── 📄 package.json                (Dependencies: express, mongoose, cors, etc)
+│   ├── 📄 Procfile                    (Heroku/Railway deployment config)
+│   ├── 📄 seed.js                     (Database seed script)
+│   ├── 📄 .env                        (Environment configuration)
+│   │
+│   ├── 🔐 middleware/
+│   │   └── 📄 auth.js                 (JWT verification middleware)
+│   │
+│   ├── 📊 models/ (Mongoose Schemas)
+│   │   ├── 📄 Admin.js                (Admin user model)
+│   │   ├── 📄 Product.js              (Product catalog)
+│   │   ├── 📄 Collection.js           (Product collections/categories)
+│   │   ├── 📄 Order.js                (Customer orders)
+│   │   ├── 📄 Booking.js              (Appointment bookings)
+│   │   ├── 📄 Shipment.js             (Shipment tracking)
+│   │   ├── 📄 ShippingRate.js         (Shipping rates config)
+│   │   ├── 📄 TrackingEvent.js        (Logistics tracking updates)
+│   │   ├── 📄 Notification.js         (Notification logs)
+│   │   └── 📄 AbandonedCheckout.js    (Cart recovery data)
+│   │
+│   ├── 🛣️ routes/ (API Endpoints)
+│   │   ├── 📄 auth.js                 (POST /api/auth/login, /logout)
+│   │   ├── 📄 admin.js                (Admin management endpoints)
+│   │   ├── 📄 products.js             (Product CRUD: GET, POST, PUT, DELETE)
+│   │   ├── 📄 collections.js          (Collection CRUD)
+│   │   ├── 📄 orders.js               (Order management & creation)
+│   │   ├── 📄 booking.js              (Appointment booking endpoints)
+│   │   ├── 📄 shipping.js             (Shipping & shipment creation)
+│   │   ├── 📄 shipment.js             (Shipment tracking)
+│   │   ├── 📄 track.js                (Public tracking endpoint)
+│   │   ├── 📄 notifications.js        (Email notification endpoints)
+│   │   └── 📄 abandonedCheckout.js    (Cart recovery endpoints)
+│   │
+│   ├── 🔧 services/ (Business Logic)
+│   │   ├── 📄 notificationService.js  (Email sending via Gmail/Nodemailer)
+│   │   ├── 📄 shippingService.js      (Shipping orchestration)
+│   │   ├── 📂 logistics/              (Logistics Provider Implementations)
+│   │   │   ├── 📄 ShippingProvider.js (Base class/interface)
+│   │   │   ├── 📄 BlueDartProvider.js (Blue Dart API integration)
+│   │   │   ├── 📄 DelhiveryProvider.js (Delhivery API integration)
+│   │   │   ├── 📄 DHLProvider.js      (DHL API integration)
+│   │   │   └── 📄 providerFactory.js  (Factory pattern - route to provider)
+│   │   └── 📂 logistics-service/
+│   │       └── 📂 src/
+│   │           ├── 📂 controllers/    (Logistics controllers)
+│   │           ├── 📂 models/         (Logistics data models)
+│   │           ├── 📂 routes/         (Logistics routes)
+│   │           └── 📂 services/
+│   │               └── 📂 shipping/   (Shipping service details)
+│   │
+│   ├── ⏰ cron/ (Scheduled Tasks)
+│   │   ├── 📄 abandonedCheckoutCron.js (Runs hourly - cart recovery)
+│   │   │   └─ Identifies carts > 24h not completed
+│   │   │   └─ Sends recovery email to customers
+│   │   └── 📄 trackingCron.js         (Runs hourly - tracking updates)
+│   │       └─ Queries logistics providers
+│   │       └─ Updates tracking events
+│   │
+│   └── 🛠️ utils/ (Helper Functions)
+│       ├── 📄 cloudinary.js           (Image upload/CDN helper)
+│       ├── 📄 email.js                (Email configuration & templates)
+│       └── 📄 notifications.js        (Notification helper functions)
+│
+│
+├── 🎨 ADMIN DASHBOARD (React + Vite + TypeScript)
+│   ├── 📄 package.json                (Dependencies: react, vite, typescript)
+│   ├── 📄 index.html                  (HTML entry point)
+│   ├── 📄 vite.config.ts              (Vite configuration)
+│   ├── 📄 tsconfig.json               (TypeScript configuration)
+│   ├── 📄 tsconfig.app.json           (App-specific TS config)
+│   ├── 📄 tsconfig.node.json          (Node-specific TS config)
+│   ├── 📄 eslint.config.js            (ESLint configuration)
+│   ├── 📄 components.json             (Shadcn/UI or component config)
+│   ├── 📄 README.md
+│   ├── 📁 public/                     (Static assets)
+│   │
+│   └── 📁 src/
+│       ├── 📄 main.tsx                (React entry point)
+│       ├── 📄 App.tsx                 (Main app component - routing & auth)
+│       │   └─ Checks localStorage for admin_token
+│       │   └─ Shows LoginPage if not authenticated
+│       │   └─ Shows Dashboard if authenticated
+│       ├── 📄 App.css                 (Global app styles)
+│       ├── 📄 index.css               (Base styles)
+│       │
+│       ├── 🔐 LoginPage.tsx           (Admin login component)
+│       │   └─ POST /api/auth/login
+│       │   └─ Stores token in localStorage
+│       │
+│       ├── 📊 Dashboard.tsx           (Main admin dashboard)
+│       │   └─ Displays tabs for each feature
+│       │   └─ Tab navigation
+│       │   └─ Logout functionality
+│       │
+│       ├── 📑 Tab Components (Feature Pages)
+│       │   ├── 📄 ProductsTab.tsx     (Product management page)
+│       │   │   └─ List products (GET /api/products)
+│       │   │   └─ Create/Edit product (POST/PUT /api/products)
+│       │   │   └─ Delete product (DELETE /api/products/:id)
+│       │   ├── 📄 OrdersTab.tsx       (Order management page)
+│       │   │   └─ List orders (GET /api/orders)
+│       │   │   └─ Update order status
+│       │   │   └─ Assign shipping
+│       │   ├── 📄 CollectionsTab.tsx  (Collection management page)
+│       │   │   └─ List/Create/Edit collections
+│       │   │   └─ Assign products to collections
+│       │   └── 📄 ShippingTab.tsx     (Shipping management page)
+│       │       └─ View shipments
+│       │       └─ Track shipments
+│       │       └─ Configure shipping rates
+│       │
+│       ├── 📝 Form Components
+│       │   ├── 📄 ProductForm.tsx     (Product create/edit form)
+│       │   │   └─ Image upload via Cloudinary
+│       │   │   └─ Product details input
+│       │   ├── 📄 CollectionForm.tsx  (Collection form)
+│       │   └── 📄 DetailInput.tsx     (Generic detail input component)
+│       │
+│       ├── 🔌 API Integration
+│       │   └── 📄 api.ts              (API call helper functions)
+│       │       ├─ getProducts()
+│       │       ├─ createProduct()
+│       │       ├─ getOrders()
+│       │       ├─ updateOrder()
+│       │       └─ ... other API methods
+│       │
+│       ├── 🎨 assets/                (Admin panel images/icons)
+│       │
+│       └── 📁 styles/                (Component-specific CSS if any)
+│
+│
+├── 🛒 CUSTOMER FRONTEND (React + Vite + TanStack Router + TypeScript)
+│   ├── 📄 package.json               (Dependencies: react, vite, tanstack/react-router)
+│   ├── 📄 index.html                 (HTML entry point)
+│   ├── 📄 vite.config.ts             (Vite configuration)
+│   ├── 📄 tsconfig.json              (TypeScript configuration)
+│   ├── 📄 tsconfig.app.json          (App-specific TS config)
+│   ├── 📄 tsconfig.node.json         (Node-specific TS config)
+│   ├── 📄 eslint.config.js           (ESLint configuration)
+│   ├── 📄 components.json            (Shadcn/UI component config)
+│   ├── 📄 README.md
+│   ├── 📁 public/                    (Static assets)
+│   │
+│   └── 📁 src/
+│       ├── 📄 main.tsx               (React entry point - renders RouterProvider)
+│       ├── 📄 router.tsx             (TanStack Router configuration)
+│       │   └─ Defines all routes in the app
+│       │   └─ Route prefetching setup
+│       ├── 📄 routeTree.gen.ts       (Auto-generated route types - DO NOT EDIT)
+│       ├── 📄 styles.css             (Global application styles)
+│       │
+│       ├── 🌍 routes/ (Page Components - TanStack Router)
+│       │   ├── 📄 __root.tsx         (Root layout - wrapper for all pages)
+│       │   ├── 📄 about.tsx          (About page)
+│       │   ├── 📄 about.our-story.tsx (Our story sub-page)
+│       │   ├── 📄 about.legacy.tsx   (Legacy sub-page)
+│       │   ├── 📄 about.  .tsx  (   sub-page)
+│       │   ├── 📄 about.founders-vision.tsx (Founders vision)
+│       │   ├── 📄 about.art-of-embroidery.tsx (Art of embroidery)
+│       │   ├── 📄 accessibility.tsx  (Accessibility page)
+│       │   ├── 📄 book-appointment.tsx (Booking page)
+│       │   ├── 📄 campaigns.*.tsx    (Various campaign pages)
+│       │   │   ├─ artisan-portraits
+│       │   │   ├─ bridal-2025
+│       │   │   └─ festive-lookbook
+│       │   └── ... (more route files)
+│       │
+│       ├── 🧩 components/ (Reusable UI Components)
+│       │   ├── 📂 about/              (About page components)
+│       │   │   ├─ Hero section
+│       │   │   ├─ Story section
+│       │   │   └─ Timeline component
+│       │   ├── 📂 common/             (Shared components)
+│       │   │   ├─ Header
+│       │   │   ├─ Footer
+│       │   │   ├─ Breadcrumb
+│       │   │   └─ Pagination
+│       │   ├── 📂 footer/             (Footer components)
+│       │   ├── 📂 home/               (Home page components)
+│       │   │   ├─ Hero banner
+│       │   │   ├─ Featured products
+│       │   │   └─ Newsletter signup
+│       │   ├── 📂 navbar/             (Navigation components)
+│       │   │   ├─ Main navbar
+│       │   │   ├─ Mobile menu
+│       │   │   └─ Search bar
+│       │   ├── 📂 product/            (Product page components)
+│       │   │   ├─ Product card
+│       │   │   ├─ Product details
+│       │   │   ├─ Product gallery
+│       │   │   └─ Add to cart button
+│       │   ├── 📂 layout/             (Layout wrapper components)
+│       │   │   ├─ Container
+│       │   │   └─ Grid layout
+│       │   ├── 📂 ui/                 (Basic UI primitives)
+│       │   │   ├─ Button
+│       │   │   ├─ Card
+│       │   │   ├─ Modal
+│       │   │   ├─ Input
+│       │   │   ├─ Form
+│       │   │   └─ ... other basic UI
+│       │   └── 📂 checkout/           (Checkout flow components)
+│       │       ├─ Cart summary
+│       │       ├─ Address form
+│       │       ├─ Payment section
+│       │       └─ Order confirmation
+│       │
+│       ├── 🎯 context/ (State Management - Context API)
+│       │   ├── 📄 CurrencyContext.tsx
+│       │   │   └─ Global currency selection
+│       │   │   └─ Currency conversion rates
+│       │   ├── 📄 ShopContext.tsx
+│       │   │   └─ Shopping cart state
+│       │   │   └─ addToCart(), removeFromCart()
+│       │   │   └─ Persist cart to localStorage
+│       │   └── 📄 UserContext.tsx
+│       │       └─ User profile & auth state
+│       │       └─ User preferences
+│       │       └─ Order history
+│       │
+│       ├── 📊 data/ (Static Data & Constants)
+│       │   └── 📄 products.ts         (Product catalog data)
+│       │
+│       ├── 🔗 hooks/ (Custom React Hooks)
+│       │   └── 📄 use-mobile.tsx      (Detect mobile viewport)
+│       │
+│       ├── 📚 lib/ (Utility Functions & Helpers)
+│       │   ├── 📄 error-capture.ts    (Global error boundary & handling)
+│       │   ├── 📄 error-page.ts       (Error page component)
+│       │   └── 📄 utils.ts            (General utility functions)
+│       │       ├─ formatPrice()
+│       │       ├─ formatDate()
+│       │       ├─ parseQueryParams()
+│       │       └─ ... other utilities
+│       │
+│       └── 🎨 assets/                (Images, icons, fonts)
+│           ├── 📁 images/
+│           ├── 📁 icons/
+│           └── 📁 fonts/
+│
+│
+└── 📚 ROOT CONFIGURATION FILES
+    ├── 📄 DEPLOYMENT.md              (Deployment guide)
+    ├── 📄 workflow.txt               (THIS FILE - Architecture & workflows)
+    ├── .gitignore                    (Git ignore rules)
+    ├── .env                          (Example: MONGODB_URI, API keys)
+    ├── .env.example                  (Template for env variables)
+    └── README.md                     (Project overview)
+
+
+================================================================================
+DIRECTORY SIZE OVERVIEW
+================================================================================
+
+backend/                    ~200 KB
+├── routes/                 ~80 KB
+├── models/                 ~60 KB
+├── services/               ~50 KB
+└── middleware/             ~10 KB
+
+admin/                      ~500 KB
+├── src/components/         ~300 KB
+├── src/                    ~150 KB
+└── node_modules/           ~200 MB (on disk)
+
+my-app/                     ~1.2 MB
+├── src/components/         ~400 KB
+├── src/routes/             ~300 KB
+├── src/                    ~250 KB
+└── node_modules/           ~300 MB (on disk)
+
+
+================================================================================
+FILE RELATIONSHIPS & DATA FLOW
+================================================================================
+
+AUTHENTICATION FLOW FILES:
+├─ backend/routes/auth.js               (Handle login)
+├─ backend/middleware/auth.js           (Verify JWT)
+├─ admin/src/LoginPage.tsx              (Admin login UI)
+└─ admin/src/api.ts                     (API calls)
+
+PRODUCT MANAGEMENT FLOW FILES:
+├─ backend/models/Product.js            (Schema)
+├─ backend/routes/products.js           (CRUD endpoints)
+├─ backend/services/                    (Business logic)
+├─ admin/src/ProductsTab.tsx            (Admin UI)
+├─ admin/src/ProductForm.tsx            (Form component)
+├─ admin/src/api.ts                     (API calls)
+├─ backend/utils/cloudinary.js          (Image upload)
+└─ my-app/src/components/product/       (Product display)
+
+ORDER MANAGEMENT FLOW FILES:
+├─ backend/models/Order.js              (Schema)
+├─ backend/routes/orders.js             (Order endpoints)
+├─ backend/routes/booking.js            (Booking endpoints)
+├─ admin/src/OrdersTab.tsx              (Admin order view)
+├─ admin/src/api.ts                     (API calls)
+├─ my-app/src/components/checkout/      (Checkout UI)
+├─ my-app/src/context/ShopContext.tsx   (Cart state)
+└─ backend/cron/abandonedCheckoutCron.js (Cart recovery)
+
+SHIPPING & TRACKING FLOW FILES:
+├─ backend/models/Shipment.js           (Shipment schema)
+├─ backend/models/TrackingEvent.js      (Tracking schema)
+├─ backend/routes/shipping.js           (Shipping endpoints)
+├─ backend/routes/track.js              (Public tracking)
+├─ backend/services/shippingService.js  (Shipping logic)
+├─ backend/services/logistics/          (Provider APIs)
+├─ backend/cron/trackingCron.js         (Tracking updates)
+├─ admin/src/ShippingTab.tsx            (Admin shipping)
+└─ my-app/src/                          (Customer tracking view)
+
+EMAIL/NOTIFICATION FLOW FILES:
+├─ backend/models/Notification.js       (Schema)
+├─ backend/routes/notifications.js      (Notification endpoints)
+├─ backend/services/notificationService.js (Email logic)
+├─ backend/utils/email.js               (Email config)
+├─ backend/cron/abandonedCheckoutCron.js (Sends recovery emails)
+└─ backend/cron/trackingCron.js         (Sends tracking updates)
+
+
+================================================================================
+COMPONENT DEPENDENCY TREE
+================================================================================
+
+my-app (Frontend):
+└─ __root.tsx (Layout)
+   ├─ navbar/                        (Navigation)
+   ├─ routes/                        (Page routes)
+   │  ├─ home.tsx                    (Home page)
+   │  ├─ about.tsx & sub-routes      (About pages)
+   │  ├─ product/                    (Product pages)
+   │  ├─ book-appointment.tsx        (Booking)
+   │  ├─ campaigns/                  (Campaign pages)
+   │  └─ ... more routes
+   ├─ checkout/                      (Shopping flow)
+   ├─ footer/                        (Footer)
+   └─ CurrencyContext, ShopContext, UserContext (Global state)
+
+admin (Admin Panel):
+└─ App.tsx (Main app)
+   ├─ LoginPage.tsx (if not authenticated)
+   └─ Dashboard.tsx (if authenticated)
+      ├─ ProductsTab.tsx
+      │  ├─ ProductForm.tsx
+      │  └─ DetailInput.tsx
+      ├─ OrdersTab.tsx
+      ├─ CollectionsTab.tsx
+      │  └─ CollectionForm.tsx
+      └─ ShippingTab.tsx
+
+
+================================================================================
+API ENDPOINT TREE
+================================================================================
+
+/api/
+├─ /auth/
+│  ├─ POST   /login
+│  ├─ POST   /logout
+│  └─ POST   /verify
+├─ /products/
+│  ├─ GET    /
+│  ├─ GET    /:id
+│  ├─ POST   /
+│  ├─ PUT    /:id
+│  └─ DELETE /:id
+├─ /collections/
+│  ├─ GET    /
+│  ├─ GET    /:id
+│  ├─ POST   /
+│  ├─ PUT    /:id
+│  └─ DELETE /:id
+├─ /orders/
+│  ├─ GET    /
+│  ├─ GET    /:id
+│  ├─ POST   /
+│  ├─ PUT    /:id
+│  ├─ DELETE /:id
+│  ├─ POST   /:id/confirm-payment
+│  └─ POST   /:id/cancel
+├─ /booking/
+│  ├─ GET    /
+│  ├─ GET    /:id
+│  ├─ POST   /
+│  ├─ PUT    /:id
+│  └─ DELETE /:id
+├─ /shipping/
+│  ├─ GET    /
+│  ├─ GET    /rates
+│  ├─ POST   /create-shipment
+│  ├─ PUT    /:id
+│  └─ DELETE /:id
+├─ /shipment/
+│  ├─ GET    /
+│  └─ GET    /:id
+├─ /track/
+│  ├─ GET    /
+│  ├─ GET    /:id
+│  └─ GET    /:id/events
+├─ /notifications/
+│  ├─ GET    /
+│  ├─ POST   /send
+│  └─ DELETE /:id
+├─ /admin/
+│  ├─ GET    /dashboard
+│  ├─ GET    /users
+│  ├─ POST   /users
+│  └─ PUT    /users/:id
+└─ /abandoned-checkout/
+   ├─ GET    /
+   ├─ POST   /:id/recover
+   └─ DELETE /:id
+
+
+================================================================================
+KEY INTEGRATION POINTS
+================================================================================
+
+1. Backend ↔ Frontend (my-app):
+   └─ REST API at http://localhost:5000/api
+      ├─ GET /products          (Product listing)
+      ├─ POST /orders           (Order creation)
+      ├─ POST /booking          (Appointment booking)
+      ├─ GET /track             (Tracking status)
+      └─ Payment integration with Razorpay
+
+2. Backend ↔ Admin Dashboard:
+   └─ REST API at http://localhost:5000/api (with JWT auth)
+      ├─ POST /auth/login       (Admin login)
+      ├─ All CRUD operations    (Protected by JWT)
+      └─ Dashboard stats: GET /admin/dashboard
+
+3. Backend ↔ External Services:
+   ├─ MongoDB Atlas            (Database)
+   ├─ Cloudinary               (Image CDN)
+   ├─ Gmail/Nodemailer         (Email)
+   ├─ Razorpay                 (Payment)
+   ├─ Blue Dart/Delhivery/DHL  (Shipping)
+   └─ Node-cron                (Task scheduling)
+
+4. Frontend ↔ Context API:
+   ├─ ShopContext              (Cart state)
+   ├─ UserContext              (User profile)
+   └─ CurrencyContext          (Currency selection)
+
+5. Admin ↔ localStorage:
+   ├─ admin_token              (JWT stored)
+   └─ admin_username           (Username stored)
+
+
+================================================================================
+PERFORMANCE CONSIDERATIONS BY LAYER
+================================================================================
+
+Frontend (my-app):
+├─ Lazy load route components (TanStack Router)
+├─ Image optimization via Cloudinary
+├─ Debounce search queries
+├─ Pagination for product listings
+└─ Cache API responses where appropriate
+
+Admin Dashboard:
+├─ Paginate large datasets (orders, products)
+├─ Lazy load tabs on demand
+├─ Debounce form inputs
+└─ Client-side sorting/filtering before API
+
+Backend:
+├─ Database indexing on frequently queried fields
+├─ Pagination for list endpoints (default 20/50/100 items)
+├─ Connection pooling for MongoDB
+├─ Gzip compression for responses
+├─ CDN for static files (Cloudinary)
+└─ Cache shipping rates (update periodically)
+
+
+================================================================================
+SECURITY LAYERS
+================================================================================
+
+Layer 1: Network Security
+├─ HTTPS in production (SSL/TLS)
+└─ CORS enabled only for allowed origins
+
+Layer 2: API Security
+├─ JWT authentication for admin operations
+├─ Request validation (input sanitization)
+├─ Rate limiting (recommended to implement)
+└─ CSRF protection via JWT tokens
+
+Layer 3: Data Security
+├─ MongoDB connection with credentials
+├─ Environment variables for sensitive data
+├─ Password hashing (bcryptjs)
+└─ No sensitive data in client-side code
+
+Layer 4: Application Security
+├─ Helmet.js for security headers
+├─ XSS protection (React auto-escapes)
+├─ SQL injection prevention (using MongoDB)
+└─ Error messages don't expose internals
+
+
+================================================================================
+DEPLOYMENT ARCHITECTURE
+================================================================================
+
+Production Environment:
+┌───────────────────────────────────────────────────────────┐
+│                    CUSTOMER ACCESS                         │
+└──────────────┬──────────────────────────────┬──────────────┘
+               │                              │
+         ┌─────▼─────┐              ┌────────▼──────┐
+         │   my-app   │              │    admin/     │
+         │  (Frontend)│              │  (Admin Panel)│
+         │  Vercel/   │              │   Vercel/     │
+         │  Netlify   │              │   Netlify     │
+         └─────┬─────┘              └────────┬──────┘
+               │                              │
+               └──────────────┬───────────────┘
+                              │ HTTPS/REST
+                      ┌───────▼────────┐
+                      │  Backend API   │
+                      │  (Express.js)  │
+                      │  Railway/Render│
+                      │   :5000        │
+                      └───────┬────────┘
+                              │ MongoDB Driver
+                      ┌───────▼────────┐
+                      │  MongoDB Atlas │
+                      │  (Cloud DB)    │
+                      └────────────────┘
+
+External Services:
+├─ Cloudinary API       (Image storage)
+├─ Gmail SMTP           (Email)
+├─ Razorpay API         (Payment)
+├─ Logistics APIs       (Shipping)
+└─ Node-cron            (Task scheduling)
+
+
+================================================================================
+MONITORING & OBSERVABILITY
+================================================================================
+
+Backend Logs:
+├─ Server startup/shutdown
+├─ API request/response
+├─ Database connection status
+├─ Cron job execution
+├─ Error stack traces
+└─ External API calls (Razorpay, shipping)
+
+Frontend Logs (my-app):
+├─ Component renders
+├─ Route changes
+├─ API errors
+├─ Context state changes
+└─ User interactions
+
+Admin Logs:
+├─ Login/logout events
+├─ CRUD operations
+├─ Data changes
+└─ Permission denials
+
+Database Logs:
+├─ Query performance
+├─ Slow query alerts
+├─ Connection pool status
+└─ Replica set status
+
+
+================================================================================
+DEVELOPMENT WORKFLOW
+================================================================================
+
+Local Development Start:
+1. Terminal 1: cd backend && npm install && npm run dev
+2. Terminal 2: cd my-app && npm install && npm run dev
+3. Terminal 3: cd admin && npm install && npm run dev
+4. Access:
+   ├─ Frontend: http://localhost:5173
+   ├─ Admin: http://localhost:5174
+   ├─ Backend: http://localhost:5000
+   └─ API Docs: http://localhost:5000/api
+
+Git Workflow:
+├─ Branch naming: feature/*, bugfix/*, hotfix/*
+├─ Commit message format: [TYPE] description
+├─ Pull request review before merge
+├─ Merge to main triggers CI/CD
+└─ Production deployment on success
+
+
+================================================================================
+TROUBLESHOOTING PATHS
+================================================================================
+
+Issue: API not responding
+Path: backend/server.js → Check MONGODB_URI → Check CORS settings
+
+Issue: Authentication failed
+Path: admin/src/LoginPage.tsx → backend/routes/auth.js → backend/middleware/auth.js
+
+Issue: Images not uploading
+Path: admin/src/ProductForm.tsx → backend/utils/cloudinary.js → Check credentials
+
+Issue: Email not sending
+Path: backend/routes/orders.js → backend/services/notificationService.js → Check EMAIL_PASS
+
+Issue: Shipping not working
+Path: backend/routes/shipping.js → backend/services/shippingService.js → backend/services/logistics/
+
+Issue: Cart recovery not triggering
+Path: backend/cron/abandonedCheckoutCron.js → Check cron schedule → Check MongoDB query
+
+
+================================================================================
+END OF WORK TREE
+================================================================================

@@ -1,0 +1,586 @@
+SHEINAR PAYMENT FLOW
+=====================
+
+Purpose
+-------
+This document describes the implemented Razorpay payment architecture, API
+contracts, state transitions, security controls, concurrency behavior, test
+coverage, and Razorpay Test Mode validation procedure.
+
+IMPORTANT CREDENTIAL RULE
+-------------------------
+Never commit Razorpay keys, webhook secrets, database passwords, SMTP
+passwords, JWT secrets, Cloudinary secrets, or carrier credentials.
+
+Configure secrets only in the backend runtime environment:
+
+  RAZORPAY_KEY_ID=rzp_test_...
+  RAZORPAY_KEY_SECRET=<test-secret>
+  RAZORPAY_WEBHOOK_SECRET=<webhook-secret>
+  RAZORPAY_SUPPORTED_CURRENCIES=INR
+  FX_RATES_JSON=<optional-backend-only-rates-json>
+
+The Razorpay test key supplied during development is intentionally not copied
+into this document. Rotate it and the other credentials found in backend/.env
+before sharing this repository or using it in production.
+
+
+1. TRUSTED PAYMENT FLOW
+=======================
+
+Customer cart
+    |
+    | product IDs, quantities, size, customer, address, currency preference
+    v
+POST /api/payments/create-order
+    |
+    | backend loads product prices from MongoDB
+    | backend validates stock/status/quantity/shipping/currency
+    | backend calculates INR base total
+    | backend converts to configured supported currency
+    | backend creates local Order and PaymentAttempt
+    | backend creates Razorpay Order
+    v
+Frontend receives safe checkout data
+    |
+    | Razorpay Checkout opens with server amount/currency/order ID
+    v
+Customer pays, fails, or closes Checkout
+    |
+    +--> success callback --> POST /api/payments/verify
+    |                            |
+    |                            | signature, order, payment, amount, currency,
+    |                            | and gateway status are checked server-side
+    |                            v
+    |                         captured payment
+    |                            |
+    |                            | atomic paid transition
+    |                            | fulfilment guard
+    |                            | confirmation notification
+    |                            v
+    |                         paid Order
+    |
+    +--> close/failure --> POST /api/payments/cancel when safe
+                               |
+                               v
+                            cancelled/failed attempt
+
+Gateway webhook can arrive before, during, or after the browser callback:
+
+Razorpay webhook
+    |
+    | raw body preserved
+    | X-Razorpay-Signature verified
+    | X-Razorpay-Event-Id deduplicated
+    | payment/order matched to PaymentAttempt
+    v
+same captured/failure reconciliation path
+
+The browser is never the authority for payment success.
+
+
+2. LOCAL ENTITIES AND STATES
+============================
+
+Local Order
+-----------
+A business order containing customer, shipping, trusted item pricing, base
+amount, charged currency, payment status, paid timestamp, successful attempt,
+and fulfilment marker.
+
+Order paymentStatus:
+  pending -> paid
+
+Order refundStatus:
+  none -> pending -> partially_refunded -> refunded
+
+PaymentAttempt
+--------------
+One attempt to pay for a Local Order. Each attempt stores immutable pricing,
+currency conversion, Razorpay order ID, payment ID, idempotency key, expiry,
+and attempt state.
+
+PaymentAttempt status:
+  created
+  checkout_open
+  pending
+  authorized
+  captured
+  failed
+  cancelled
+  expired
+  superseded
+  duplicate
+
+Gateway Payment
+---------------
+The Razorpay payment identified by razorpayPaymentId. It is accepted only
+when the server confirms its relationship to the stored Razorpay order and
+matches the stored amount and currency.
+
+Terminal safety rules:
+  - captured cannot become failed through a stale callback
+  - captured cannot become pending
+  - cancelled cannot become captured without a real gateway confirmation
+  - an old attempt cannot overwrite a newer paid attempt
+  - only one attempt can fulfil a Local Order
+
+
+3. PAYMENT API CONTRACTS
+========================
+
+GET /api/payments/currencies
+----------------------------
+Returns the backend allowlist configured by RAZORPAY_SUPPORTED_CURRENCIES.
+
+Response:
+  { "currencies": ["INR"] }
+
+The frontend currency selector is only a preference. The backend allowlist and
+Razorpay account capability remain authoritative.
+
+
+POST /api/payments/create-order
+-------------------------------
+Rate limited. Requires Idempotency-Key header, minimum 16 characters.
+
+Request example:
+  {
+    "items": [
+      { "productId": "trusted-dress", "quantity": 1, "size": "M" }
+    ],
+    "customer": {
+      "firstName": "Test",
+      "lastName": "Buyer",
+      "email": "buyer@example.com",
+      "phone": "+911234567890"
+    },
+    "shippingAddress": {
+      "address": "Test Street",
+      "city": " Mohali",
+      "state": "CH",
+      "pin": "160001",
+      "country": "India"
+    },
+    "shippingId": "<active-shipping-rate-id>",
+    "currency": "INR"
+  }
+
+Never send or trust frontend price, title, subtotal, discount, tax, shipping
+fee, exchange rate, or final amount.
+
+Success response 201:
+  {
+    "attemptId": "<payment-attempt-id>",
+    "accessToken": "<opaque-session-token>",
+    "razorpayOrderId": "order_...",
+    "amount": 100000,
+    "currency": "INR",
+    "keyId": "rzp_test_...",
+    "chargedAmount": 1000,
+    "chargedCurrency": "INR",
+    "expiresAt": "<timestamp>"
+  }
+
+Conflict response 409:
+  Returned when another active tab/request already owns this cart payment
+  session, when initialization is still in progress, or when an idempotency
+  key is replayed without its original session token.
+
+
+POST /api/payments/verify
+-------------------------
+Rate limited. The frontend sends only Razorpay callback values plus the opaque
+attempt session.
+
+Request:
+  {
+    "attemptId": "<payment-attempt-id>",
+    "accessToken": "<opaque-session-token>",
+    "razorpayOrderId": "order_...",
+    "razorpayPaymentId": "pay_...",
+    "razorpaySignature": "<checkout-signature>"
+  }
+
+Server checks:
+  1. Attempt exists and access token hash matches.
+  2. Razorpay order ID equals the stored attempt order ID.
+  3. HMAC signature uses RAZORPAY_KEY_SECRET.
+  4. Razorpay payment belongs to the stored order.
+  5. Gateway amount equals stored gateway minor-unit amount.
+  6. Gateway currency equals stored charged currency.
+  7. Gateway status is authorized or captured.
+  8. Payment ID has not already been used by another attempt.
+  9. Captured transition is idempotent and fulfilment runs once.
+
+The response is sanitized. It does not return token hashes, customer email,
+addresses, cart internals, or private database fields.
+
+
+GET /api/payments/status/:attemptId
+-----------------------------------
+Requires:
+  X-Payment-Access-Token: <opaque-session-token>
+
+Used after browser refresh, network timeout, Checkout dismissal, or uncertain
+payment result. The frontend must not immediately charge again while status is
+uncertain.
+
+Returns a sanitized attempt and limited order status:
+  orderNumber, status, paymentStatus, total, currency, paidAt
+
+
+POST /api/payments/cancel
+-------------------------
+Requires attemptId and the opaque access token.
+
+Cancellation is applied only to created, checkout_open, or pending attempts.
+An authorized or captured attempt is returned unchanged. Closing Checkout is
+not proof that no payment occurred.
+
+
+POST /api/payments/webhook
+--------------------------
+Razorpay webhook endpoint.
+
+Required headers:
+  X-Razorpay-Signature
+  X-Razorpay-Event-Id
+
+Required behavior:
+  - raw JSON body is preserved before express.json()
+  - HMAC-SHA256 is calculated over the raw body
+  - duplicate event IDs are ignored safely
+  - unknown attempts are recorded as ignored
+  - payment.captured and order.paid reconcile captured payments
+  - payment.failed never downgrades a captured attempt
+  - duplicate captured payment IDs are marked duplicate
+  - event processing is auditable
+
+Webhook events must be configured in Razorpay Dashboard Test Mode first.
+
+
+POST /api/payments/refund
+-------------------------
+Admin JWT required. Also rate limited and idempotent.
+
+Headers:
+  Authorization: Bearer <admin-jwt>
+  Idempotency-Key: <unique-refund-key>
+
+Request:
+  {
+    "orderId": "<local-order-id>",
+    "attemptId": "<captured-attempt-id>",
+    "amount": 1000
+  }
+
+Server checks:
+  - admin authorization
+  - order and attempt relationship
+  - captured payment status
+  - original charged currency
+  - refund does not exceed captured less already refunded
+  - unique refund idempotency key
+
+Refunds are recorded as created, processed, or failed. A failed gateway refund
+remains auditable and can be retried with a new idempotency key only through
+authorized business logic.
+
+
+4. MULTIPLE TRAFFIC AND MULTIPLE PAYMENT INITIATION
+====================================================
+
+Scenario: double-click or two tabs start payment together.
+
+Protection sequence:
+  1. Each request must provide an idempotency key.
+  2. The backend calculates a canonical cart fingerprint from trusted product
+     IDs, quantities, sizes, customer email, shipping selection, and currency.
+  3. PaymentAttemptLock claims that fingerprint using a unique MongoDB index.
+  4. Only one request can create the active payment attempt.
+  5. The winner creates one local order and one Razorpay order.
+  6. Losing requests receive HTTP 409 and must reuse/check the existing flow.
+  7. If the winner is still attaching its attempt ID, losers receive status
+     "initializing" and should retry shortly.
+  8. The lock is released after capture, cancellation, gateway failure, or
+     duplicate-payment handling.
+
+This works across multiple Node processes because the lock is enforced by
+MongoDB, not only by in-memory JavaScript state.
+
+Scenario: two genuine captured payments exist.
+
+Protection sequence:
+  - first valid capture atomically marks the local order paid
+  - fulfilmentProcessed prevents duplicate fulfilment/email side effects
+  - the second payment is marked duplicate
+  - it is not silently ignored
+  - it must be reconciled and refunded through authorized refund workflow
+
+Scenario: old tab submits a stale failure/cancellation after another tab paid.
+
+Result:
+  - old attempt changes only its own attempt state
+  - paid order cannot be downgraded
+  - successful attempt remains linked to the order
+
+
+5. CURRENCY AND AMOUNT RULES
+============================
+
+Base product prices are maintained in INR in the backend catalog.
+
+The backend calculates:
+  baseCurrency
+  baseAmount
+  chargedCurrency
+  chargedAmount
+  gatewayAmount in minor units
+  currencyMinorUnit
+  exchangeRate
+  exchangeRateSource
+  exchangeRateTimestamp
+
+The frontend conversion rate is never trusted.
+
+Examples:
+  INR 1000 at rate 0.01 USD = USD 10.00 = gateway amount 1000 cents
+  INR 1000 at rate 1.5 JPY = JPY 1500 = gateway amount 1500
+
+Razorpay international currencies must be explicitly enabled for the merchant
+account. Do not add a currency to RAZORPAY_SUPPORTED_CURRENCIES until Razorpay
+has confirmed account/product support.
+
+Changing currency creates a new pricing/payment attempt. It cannot mutate an
+existing Razorpay order.
+
+
+6. SECURITY CONTROLS
+====================
+
+Implemented:
+  - Razorpay secret is backend-only.
+  - Webhook secret is backend-only.
+  - Frontend cannot set the trusted amount.
+  - Frontend cannot set trusted product price/title.
+  - Frontend cannot set trusted tax/shipping/discount.
+  - Payment IDs and signatures are checked server-side.
+  - Payment status is checked against Razorpay.
+  - Opaque attempt access tokens are stored hashed.
+  - Payment responses are sanitized.
+  - Payment endpoints are rate limited.
+  - Request JSON is limited to 100 KB.
+  - Refunds require admin JWT.
+  - Webhook raw-body signatures are validated.
+  - Webhook event IDs are deduplicated.
+  - Duplicate payment IDs are detected.
+  - Fulfilment is guarded by an atomic flag.
+  - Active payment initiation is protected by a MongoDB unique lock.
+  - Malformed JSON and oversized requests are rejected.
+
+Operational requirements:
+  - Use HTTPS in production.
+  - Rotate all credentials that were stored in backend/.env.
+  - Keep backend/.env out of source control.
+  - Set NODE_ENV=production in production.
+  - Use separate Test Mode and Live Mode Razorpay credentials.
+  - Set a production webhook URL and webhook secret.
+  - Do not log card numbers, CVV, OTP, secrets, or authentication data.
+  - Restrict ALLOWED_ORIGINS to real production origins.
+  - Add database backups and monitoring.
+  - Review MongoDB indexes before applying them to production data.
+
+
+7. TESTS IMPLEMENTED AND VERIFIED
+==================================
+
+Backend command:
+  cd backend
+  npm test
+
+Latest actual result:
+  15 tests passed
+  0 tests failed
+  0 tests skipped
+
+Coverage includes:
+  1. Server recalculates price and ignores frontend price/title.
+  2. Zero and negative quantities are rejected.
+  3. Missing carts are rejected.
+  4. Unsupported currency is rejected.
+  5. JPY zero-minor-unit amount is calculated correctly.
+  6. Fake signature and mismatched gateway amount are rejected.
+  7. Valid verification is idempotent.
+  8. Duplicate verification does not create another paid order.
+  9. Payment response does not expose token hash or customer email.
+  10. Invalid webhook signature is rejected.
+  11. Duplicate webhook event IDs are idempotent.
+  12. Multiple tabs cannot create a second active attempt.
+  13. Cancelled attempts can be retried.
+  14. Captured attempts cannot be cancelled by a late tab.
+  15. Concurrent initiation returns one 201 and one 409.
+  16. Reused payment IDs become duplicate/reconciliation cases.
+  17. Refund endpoint requires admin authorization.
+  18. Malformed JSON is rejected.
+  19. Oversized JSON is rejected.
+
+The test suite uses mocked Razorpay calls and MongoDB Memory Server. It does
+not charge real cards and does not prove live Razorpay behavior.
+
+Frontend command:
+  cd my-app
+  npm test
+
+Latest actual result:
+  3 tests passed
+  0 tests failed
+
+Frontend coverage:
+  - payment session survives component remount
+  - malformed session data is removed
+  - payment session is cleared after terminal success handling
+
+Frontend production build:
+  cd my-app
+  npm run build
+
+Latest actual result:
+  build passed
+
+Static diagnostics:
+  Touched payment files reported no errors.
+
+Not passed:
+  - npm run lint is blocked by an existing eslint.config.js error involving
+    an undefined recommended export.
+  - Playwright E2E was added but Chromium installation was interrupted, so
+    no Playwright test is claimed as passed.
+  - Real Razorpay Test Mode checkout, webhook delivery, and refund calls still
+    require manual execution with the merchant's test account.
+  - Test email warnings occur because local SMTP credentials are invalid;
+    email failures do not mark the payment test as failed.
+
+
+8. RAZORPAY TEST MODE SETUP
+===========================
+
+1. Use a Razorpay Test Mode key in backend environment only.
+2. Set:
+     NODE_ENV=development
+     RAZORPAY_KEY_ID=rzp_test_...
+     RAZORPAY_KEY_SECRET=<test-secret>
+     RAZORPAY_WEBHOOK_SECRET=<test-webhook-secret>
+     RAZORPAY_SUPPORTED_CURRENCIES=INR
+3. Start MongoDB.
+4. Start backend:
+     cd backend
+     npm run dev
+5. Start customer frontend:
+     cd my-app
+     npm run dev
+6. Confirm the browser receives only the public key ID.
+7. Confirm browser network calls never contain RAZORPAY_KEY_SECRET or the
+   webhook secret.
+8. Configure Razorpay Test Mode webhook URL:
+     https://<public-test-host>/api/payments/webhook
+9. Subscribe only to events supported by the enabled Razorpay integration,
+   including payment.captured, payment.failed, and order.paid where applicable.
+10. Confirm the webhook secret in the dashboard matches the backend variable.
+
+Never paste test or live secrets into frontend VITE variables.
+
+
+9. MANUAL TEST MODE CASES
+==========================
+
+Payment success:
+  - add an in-stock product
+  - complete customer and address fields
+  - select INR
+  - click Pay once
+  - complete Razorpay Test Mode payment
+  - expect one PaymentAttempt captured
+  - expect one paid Order
+  - refresh status page and confirm paid state
+
+Payment failure:
+  - start payment with a Razorpay failure test flow
+  - expect failed attempt
+  - expect order not paid
+  - retry using a new attempt
+
+Cancel and retry:
+  - Pay -> Cancel -> Pay -> Success
+  - expect first attempt cancelled, second captured, one fulfilment
+
+Repeated cancellation:
+  - Pay -> Cancel -> Pay -> Cancel -> Pay -> Success
+  - expect old attempts never overwrite final paid state
+
+Uncertain result:
+  - disconnect browser/network after authorization or capture
+  - reopen checkout/status page
+  - expect status check before another charge
+  - do not pay again until backend confirms outcome
+
+Multiple tabs:
+  - open checkout in two tabs
+  - click Pay in both tabs
+  - expect one active attempt and one controlled conflict
+  - complete payment in one tab
+  - refresh the other tab
+  - expect already-paid/pending recovery behavior
+
+Stale tab:
+  - let Tab A create an attempt
+  - complete payment in Tab B or through webhook
+  - submit Tab A cancellation/failure
+  - expect the paid order to remain paid
+
+Amount tampering:
+  - edit cart price, total, tax, shipping, quantity, and currency in DevTools
+  - submit create-order request
+  - expect backend to recalculate or reject
+
+Verification tampering:
+  - modify payment ID, order ID, signature, amount, and currency
+  - expect verification rejection
+
+Webhook tampering:
+  - modify raw webhook body
+  - modify X-Razorpay-Signature
+  - replay the same X-Razorpay-Event-Id
+  - expect rejection for tampering and safe ignore for replay
+
+Refund:
+  - capture a Test Mode payment
+  - call admin refund with original currency and valid amount
+  - repeat with same Idempotency-Key
+  - expect one refund record and idempotent response
+  - attempt an amount above the captured amount
+  - expect rejection
+
+
+10. PRODUCTION RELEASE GATE
+============================
+
+Do not enable Live Mode until all are true:
+  [ ] All credentials rotated and stored in deployment secret manager.
+  [ ] backend/.env is not committed or exposed.
+  [ ] Razorpay international currencies are confirmed and allowlisted.
+  [ ] RAZORPAY_WEBHOOK_SECRET is configured.
+  [ ] Public HTTPS webhook endpoint is reachable.
+  [ ] Manual Test Mode success/failure/cancel/retry tests completed.
+  [ ] Manual Test Mode webhook tests completed.
+  [ ] Refund tests completed in Test Mode.
+  [ ] Multi-tab and burst-traffic tests completed.
+  [ ] Production MongoDB indexes reviewed and applied safely.
+  [ ] SMTP credentials are valid or notification failures are queued safely.
+  [ ] ESLint configuration is repaired and lint passes.
+  [ ] Playwright browser is installed and E2E tests pass.
+  [ ] Monitoring alerts exist for duplicate payments, webhook failures,
+      refund failures, and fulfilment failures.
+  [ ] Razorpay Live Mode credentials are never used in ordinary tests.
+
+END OF PAYMENT FLOW DOCUMENT

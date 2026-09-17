@@ -1,0 +1,868 @@
+================================================================================
+                    SHEINAR - COMPLETE WORKFLOW DOCUMENTATION
+================================================================================
+
+PROJECT OVERVIEW:
+This is a full-stack e-commerce application with three main components:
+1. Backend API (Express.js + MongoDB)
+2. Customer Frontend (React + Vite + TanStack Router)
+3. Admin Dashboard (React + Vite)
+
+================================================================================
+ARCHITECTURE LAYERS & WORKFLOW
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            PRESENTATION LAYER                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  CUSTOMER FRONTEND (my-app/)             ADMIN PANEL (admin/)               │
+│  ├─ TanStack Router                      ├─ Token-based Auth               │
+│  ├─ React Components                     ├─ Dashboard Management           │
+│  ├─ Context API (Currency, Shop, User)   ├─ CRUD Operations                │
+│  └─ Responsive UI                        └─ Data Management                │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↕ (HTTP/REST API)
+                            CORS-Protected Endpoints
+                                    ↕
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              API LAYER (Backend)                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                         Express.js Server (Port 5000)                        │
+│                                                                              │
+│  ROUTES:                                                                    │
+│  ├─ /api/booking        → Appointment booking & management                  │
+│  ├─ /api/auth           → Admin authentication (Login/Logout)               │
+│  ├─ /api/admin          → Admin CRUD operations                             │
+│  ├─ /api/products       → Product management & retrieval                    │
+│  ├─ /api/collections    → Collection management                             │
+│  ├─ /api/orders         → Order management                                  │
+│  ├─ /api/shipping       → Shipping integration (Blue Dart, DHL, Delhivery) │
+│  ├─ /api/shipment       → Shipment tracking                                 │
+│  ├─ /api/track          → Order tracking                                    │
+│  ├─ /api/notifications  → Email notifications                               │
+│  └─ /api/abandoned-checkout → Cart recovery workflow                        │
+│                                                                              │
+│  MIDDLEWARE:                                                                │
+│  ├─ CORS Protection                                                         │
+│  ├─ Helmet Security                                                         │
+│  ├─ Authentication Check (JWT)                                              │
+│  ├─ Compression                                                             │
+│  └─ Error Handling                                                          │
+│                                                                              │
+│  SERVICES:                                                                  │
+│  ├─ Notification Service (Email sending)                                    │
+│  ├─ Shipping Service (Multi-provider logic)                                 │
+│  │  ├─ Blue Dart Provider                                                   │
+│  │  ├─ Delhivery Provider                                                   │
+│  │  ├─ DHL Provider                                                         │
+│  │  └─ Provider Factory Pattern                                             │
+│  └─ Cron Jobs                                                               │
+│     ├─ Abandoned Checkout Recovery                                          │
+│     └─ Tracking Event Updates                                               │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↕
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            DATABASE LAYER                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                    MongoDB Atlas (Cloud Database)                            │
+│                                                                              │
+│  COLLECTIONS:                                                               │
+│  ├─ admins                → Admin user accounts & authentication             │
+│  ├─ products              → Product catalog (name, price, images, stock)    │
+│  ├─ collections           → Product collections (categories)                │
+│  ├─ orders                → Customer orders                                 │
+│  ├─ bookings              → Appointment bookings                            │
+│  ├─ shipments             → Shipment records                                │
+│  ├─ trackingevents        → Tracking updates from logistics                 │
+│  ├─ notifications         → Notification logs                               │
+│  ├─ abandonedcheckouts    → Abandoned cart data                             │
+│  ├─ shippingrates         → Shipping rates configuration                    │
+│  └─ trakingevents         → Logistics tracking data                         │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↕
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        EXTERNAL INTEGRATIONS                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ├─ Razorpay              → Payment Gateway (Credit Card, UPI, Wallet)      │
+│  ├─ Gmail                 → Email notifications & alerts                    │
+│  ├─ Cloudinary            → Image storage & CDN                             │
+│  ├─ Blue Dart API         → Logistics tracking                              │
+│  ├─ Delhivery API         → Logistics tracking                              │
+│  └─ DHL API               → Logistics tracking                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+WORKFLOW FLOWS (USER JOURNEYS)
+================================================================================
+
+1. CUSTOMER SHOPPING WORKFLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Customer (my-app/)
+  ↓
+Browse Products
+  ↓ (GET /api/products)
+Backend retrieves from MongoDB
+  ↓
+Display Product Listings
+  ↓
+User Adds to Cart & Checkout
+  ↓ (POST /api/orders)
+Backend creates Order document
+  ↓
+Razorpay Payment Processing
+  ↓ (Webhook: /api/orders/payment-verification)
+If payment success → Order confirmed
+If payment fails → Abandoned Checkout record created
+  ↓
+Send Confirmation Email (Notification Service)
+  ↓
+Order appears in Admin Dashboard
+  ↓
+Admin updates Shipping (Selects logistics provider)
+  ↓ (POST /api/shipping)
+Shipping API creates shipment with carrier
+  ↓
+Tracking ID returned to Backend
+  ↓
+Customer receives Tracking Email
+  ↓
+Tracking Cron updates TrackingEvents every hour
+  ↓ (GET from shipping carriers)
+Customer checks tracking in my-app (GET /api/track)
+  ↓
+Order delivered
+
+
+2. ADMIN MANAGEMENT WORKFLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Admin (admin/)
+  ↓
+Visit /login
+  ↓ (POST /api/auth/login)
+Enter credentials
+  ↓
+Backend validates against admins collection
+  ↓
+Returns JWT token & username
+  ↓
+Token stored in localStorage
+  ↓
+Dashboard loads (Protected)
+  ↓ (All requests include JWT in Authorization header)
+Admin can perform CRUD:
+  
+  Products Management:
+    - View Products (GET /api/products)
+    - Create Product (POST /api/products) → Cloudinary upload
+    - Update Product (PUT /api/products/:id)
+    - Delete Product (DELETE /api/products/:id)
+  
+  Collections Management:
+    - Create/Update/Delete Collections
+    - Assign products to collections
+  
+  Orders Management:
+    - View pending orders (GET /api/orders)
+    - Update order status (PUT /api/orders/:id)
+    - View order details
+  
+  Shipping Management:
+    - Configure shipping providers
+    - Set shipping rates
+    - Assign shipments to orders
+    - View tracking updates
+  
+  Notifications:
+    - View sent notifications log
+    - Resend notifications manually
+
+
+3. ABANDONED CHECKOUT RECOVERY WORKFLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Customer initiates checkout but doesn't complete payment
+  ↓ (GET /api/orders/:id - order in pending state)
+Cron job runs every 1 hour (abandonedCheckoutCron.js)
+  ↓
+Identifies orders not completed within 24 hours
+  ↓
+Records saved to abandonedcheckouts collection
+  ↓
+Email sent to customer with recovery link
+  ↓
+Customer clicks link and returns to checkout
+  ↓ (POST /api/orders/complete)
+Completes payment
+  ↓
+Order moves to confirmed state
+
+
+4. BOOKING/APPOINTMENT WORKFLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Customer visits /book-appointment (my-app)
+  ↓
+Selects date, time, service type
+  ↓ (POST /api/booking)
+Backend saves to bookings collection
+  ↓
+Confirmation email sent to customer
+  ↓
+Notification email sent to admin
+  ↓
+Booking appears in Admin Dashboard
+  ↓
+Admin can:
+  - Confirm booking
+  - Reschedule booking
+  - Cancel booking
+  ↓
+Customer receives email notification of status change
+
+
+5. ORDER TRACKING WORKFLOW
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+Order shipped with Shipment document created
+  ↓
+Shipment has tracking_id from logistics provider
+  ↓
+Tracking Cron (trackingCron.js) runs every hour
+  ↓
+Queries shipping providers (Blue Dart, Delhivery, DHL)
+  ↓
+Receives tracking updates
+  ↓
+Creates TrackingEvent documents in DB
+  ↓
+Customer can view tracking (GET /api/track/:tracking_id)
+  ↓
+Real-time location & status updates displayed
+
+
+================================================================================
+DATA FLOW DIAGRAMS
+================================================================================
+
+AUTHENTICATION FLOW:
+┌──────────┐
+│ Admin    │
+└────┬─────┘
+     │ POST /api/auth/login
+     │ (username, password)
+     ▼
+┌──────────────────────────┐
+│ Backend Auth Route       │
+│ - Hash password check    │
+│ - Generate JWT token     │
+└────┬─────────────────────┘
+     │ { token, username, role }
+     ▼
+┌──────────┐
+│ Admin    │
+│ (stored  │
+│  in LS)  │
+└──────────┘
+
+
+ORDER CREATION FLOW:
+┌───────────────────────────────────┐
+│ Customer Cart                     │
+│ (Context API - ShopContext)       │
+└────┬────────────────────────────────┘
+     │ Items, quantities, total
+     ▼
+┌──────────────────────────────────┐
+│ POST /api/orders                 │
+│ { items[], shippingAddress, ... }│
+└────┬──────────────────────────────┘
+     │
+     ▼ MongoDB Create
+┌──────────────────────┐
+│ Order Document       │
+│ - status: pending    │
+│ - items              │
+│ - totalAmount        │
+│ - customerId         │
+└────┬─────────────────┘
+     │
+     ▼ Return order_id
+┌─────────────────────┐
+│ Razorpay Payment    │
+│ Page (iframe)       │
+└────┬────────────────┘
+     │ On Success
+     ▼ POST /api/orders/:id/confirm-payment
+┌──────────────────────────────┐
+│ Backend validates payment    │
+│ Updates order status:        │
+│ pending → confirmed          │
+└────┬─────────────────────────┘
+     │ Send confirmation email
+     ▼
+┌─────────────────────┐
+│ Customer receives   │
+│ order confirmation  │
+└─────────────────────┘
+
+
+PRODUCT MANAGEMENT FLOW:
+┌──────────────┐
+│ Admin        │
+│ /products    │
+└────┬─────────┘
+     │
+     ├─ GET /api/products (Fetch all)
+     │  ↓
+     │  └─ Display product list
+     │
+     ├─ POST /api/products (Create)
+     │  ├─ Form submission
+     │  ├─ Cloudinary image upload
+     │  └─ Save to MongoDB
+     │
+     ├─ PUT /api/products/:id (Update)
+     │  ├─ Form submission
+     │  ├─ Cloudinary image update/delete
+     │  └─ Update MongoDB document
+     │
+     └─ DELETE /api/products/:id
+        └─ Remove from MongoDB & Cloudinary
+
+
+SHIPPING WORKFLOW:
+┌──────────────────────────────────┐
+│ Order in Admin Dashboard         │
+│ (OrdersTab.tsx)                  │
+└────┬─────────────────────────────┘
+     │ Admin selects: Provider, Address, Weight
+     ▼
+┌──────────────────────────────────┐
+│ POST /api/shipping/create-shipment│
+│ (orderId, provider, address, ...)│
+└────┬────────────────────────────┘
+     │
+     ▼ Backend Factory Pattern
+┌──────────────────────────────────┐
+│ Shipping Provider Factory        │
+│ Routes to appropriate provider:  │
+│ - BlueDartProvider.js            │
+│ - DelhiveryProvider.js           │
+│ - DHLProvider.js                 │
+└────┬────────────────────────────┘
+     │ Calls provider API
+     ▼
+┌──────────────────────────────────┐
+│ Logistics API                    │
+│ (Blue Dart / Delhivery / DHL)    │
+│ Returns: tracking_id             │
+└────┬────────────────────────────┘
+     │
+     ▼ Save shipment to DB
+┌──────────────────────────────────┐
+│ Shipment Document Created        │
+│ - tracking_id                    │
+│ - provider                       │
+│ - orderId                        │
+│ - status: in_transit             │
+└────┬────────────────────────────┘
+     │ Every hour (Cron)
+     ▼ GET /api/track/:tracking_id
+┌──────────────────────────────────┐
+│ Query Logistics Provider         │
+│ Get latest tracking update       │
+└────┬────────────────────────────┘
+     │
+     ▼ Save new TrackingEvent
+┌──────────────────────────────────┐
+│ TrackingEvent Document           │
+│ - timestamp                      │
+│ - status                         │
+│ - location                       │
+│ - updates                        │
+└──────────────────────────────────┘
+
+
+================================================================================
+CRON JOBS
+================================================================================
+
+1. ABANDONED CHECKOUT CRON (abandonedCheckoutCron.js)
+   ├─ Runs: Every 1 hour
+   ├─ Logic:
+   │  ├─ Query orders with status = "pending"
+   │  ├─ CreatedAt > 24 hours ago
+   │  └─ Payment status = failed/timeout
+   ├─ Action:
+   │  ├─ Save to abandonedcheckouts collection
+   │  ├─ Send recovery email with checkout link
+   │  └─ Log abandoned checkout
+   └─ Triggers: Email notifications
+
+2. TRACKING UPDATE CRON (trackingCron.js)
+   ├─ Runs: Every 1 hour
+   ├─ Logic:
+   │  ├─ Query all active shipments
+   │  ├─ For each shipment, query provider API
+   │  └─ Check for new tracking updates
+   ├─ Action:
+   │  ├─ Create new TrackingEvent document
+   │  ├─ Update shipment status if changed
+   │  └─ Log tracking update
+   └─ Triggers: Real-time tracking updates
+
+
+================================================================================
+AUTHENTICATION & AUTHORIZATION
+================================================================================
+
+BACKEND MIDDLEWARE (middleware/auth.js):
+├─ Route: All /api/* endpoints
+├─ Middleware: verifyToken()
+├─ Logic:
+│  ├─ Extract JWT from Authorization header
+│  ├─ Verify JWT signature with JWT_SECRET
+│  ├─ Decode token to get admin ID & role
+│  └─ Attach decoded data to req.user
+├─ If invalid:
+│  └─ Return 401 Unauthorized
+└─ If valid:
+   └─ Continue to route handler
+
+ADMIN PANEL AUTHENTICATION:
+├─ Route: /login (admin/src/LoginPage.tsx)
+├─ On mount:
+│  └─ Check localStorage for admin_token
+├─ If exists:
+│  └─ Show Dashboard (authenticated state)
+├─ If not:
+│  └─ Show LoginPage
+├─ On login form submit:
+│  ├─ POST to /api/auth/login
+│  ├─ Receive token + username
+│  ├─ Store in localStorage
+│  └─ Update local state → show Dashboard
+└─ On logout:
+   ├─ Remove token from localStorage
+   └─ Clear local state → show LoginPage
+
+CUSTOMER FRONTEND:
+├─ No admin authentication needed
+├─ Guest browsing allowed
+├─ Order creation can be guest or logged-in
+└─ Tracking via public endpoint (GET /api/track/:id)
+
+
+================================================================================
+ERROR HANDLING FLOW
+================================================================================
+
+Backend Global Error Handler:
+├─ Try-Catch blocks in all routes
+├─ Custom error responses:
+│  ├─ 400 Bad Request (validation errors)
+│  ├─ 401 Unauthorized (auth failures)
+│  ├─ 403 Forbidden (permission denied)
+│  ├─ 404 Not Found (resource not found)
+│  ├─ 409 Conflict (duplicate entry)
+│  ├─ 500 Internal Server Error (unexpected)
+│  └─ All return: { error: "message", code: "ERROR_CODE" }
+└─ Logging to console/logs
+
+Frontend Error Handling (my-app/lib/error-capture.ts):
+├─ Global error boundary
+├─ Try-catch in API calls
+├─ User-friendly error messages
+└─ Redirect to error page on critical errors
+
+
+================================================================================
+ENVIRONMENT CONFIGURATION
+================================================================================
+
+Backend .env Variables:
+├─ PORT=5000
+├─ NODE_ENV=development|production
+├─ MONGODB_URI=mongodb+srv://...
+├─ JWT_SECRET=your_secret_key
+├─ EMAIL_USER=your_gmail@gmail.com
+├─ EMAIL_PASS=gmail_app_password
+├─ ADMIN_EMAIL=admin@sheinar.com
+├─ RAZORPAY_KEY_ID=key_...
+├─ RAZORPAY_KEY_SECRET=secret_...
+├─ CLOUDINARY_CLOUD_NAME=...
+├─ CLOUDINARY_API_KEY=...
+├─ CLOUDINARY_API_SECRET=...
+├─ BLUE_DART_API_KEY=...
+├─ DELHIVERY_API_KEY=...
+├─ DHL_API_KEY=...
+└─ ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
+
+Frontend .env Variables (my-app/):
+├─ VITE_API_URL=http://localhost:5000/api
+└─ VITE_APP_NAME=Sheinar
+
+Admin .env Variables (admin/):
+├─ VITE_API_URL=http://localhost:5000/api
+└─ VITE_ADMIN_PATH=/admin
+
+
+================================================================================
+DEPLOYMENT WORKFLOW
+================================================================================
+
+Development:
+├─ Backend: npm run dev → localhost:5000
+├─ Frontend: npm run dev → localhost:5173
+└─ Admin: npm run dev → localhost:5174
+
+Production Build:
+├─ Backend:
+│  ├─ npm run build (if applicable)
+│  ├─ Deploy to: Railway / Render / Heroku / VPS
+│  └─ Environment: Set .env.production
+├─ Frontend:
+│  ├─ npm run build → dist/
+│  ├─ Deploy to: Vercel / Netlify
+│  └─ Environment: Set VITE variables
+└─ Admin:
+   ├─ npm run build → dist/
+   ├─ Deploy to: Vercel / Netlify
+   └─ Environment: Set VITE variables
+
+CI/CD Pipeline:
+├─ On push to main:
+│  ├─ Run tests
+│  ├─ Run linters
+│  ├─ Build project
+│  └─ Deploy if all pass
+└─ Rollback on failure
+
+
+================================================================================
+API ENDPOINTS SUMMARY
+================================================================================
+
+AUTHENTICATION:
+├─ POST   /api/auth/login              → Admin login
+├─ POST   /api/auth/logout             → Admin logout
+└─ POST   /api/auth/verify             → Verify JWT token
+
+PRODUCTS:
+├─ GET    /api/products                → List all products
+├─ GET    /api/products/:id            → Get product details
+├─ POST   /api/products                → Create product (Admin)
+├─ PUT    /api/products/:id            → Update product (Admin)
+└─ DELETE /api/products/:id            → Delete product (Admin)
+
+COLLECTIONS:
+├─ GET    /api/collections             → List all collections
+├─ POST   /api/collections             → Create collection (Admin)
+├─ PUT    /api/collections/:id         → Update collection (Admin)
+└─ DELETE /api/collections/:id         → Delete collection (Admin)
+
+ORDERS:
+├─ GET    /api/orders                  → List orders (Admin)
+├─ GET    /api/orders/:id              → Get order details
+├─ POST   /api/orders                  → Create order (Customer)
+├─ POST   /api/orders/:id/confirm-payment → Confirm payment
+├─ PUT    /api/orders/:id              → Update order (Admin)
+└─ DELETE /api/orders/:id              → Cancel order
+
+BOOKINGS:
+├─ GET    /api/booking                 → List bookings (Admin)
+├─ POST   /api/booking                 → Create booking
+├─ PUT    /api/booking/:id             → Update booking
+└─ DELETE /api/booking/:id             → Cancel booking
+
+SHIPPING:
+├─ GET    /api/shipping                → List shipments (Admin)
+├─ POST   /api/shipping/create-shipment → Create shipment
+├─ PUT    /api/shipping/:id            → Update shipment
+└─ GET    /api/shipping/rates          → Get shipping rates
+
+TRACKING:
+├─ GET    /api/track/:id               → Get tracking status
+└─ GET    /api/track                   → Get all tracking events
+
+NOTIFICATIONS:
+├─ GET    /api/notifications           → List notification logs (Admin)
+├─ POST   /api/notifications/send      → Send notification (Admin)
+└─ DELETE /api/notifications/:id       → Delete notification log
+
+ADMIN:
+├─ GET    /api/admin/dashboard         → Dashboard stats
+├─ GET    /api/admin/users             → List admin users
+├─ POST   /api/admin/users             → Create admin user
+└─ PUT    /api/admin/users/:id         → Update admin user
+
+ABANDONED CHECKOUT:
+├─ GET    /api/abandoned-checkout      → List abandoned carts (Admin)
+└─ POST   /api/abandoned-checkout/:id/recover → Send recovery email
+
+
+================================================================================
+TECH STACK SUMMARY
+================================================================================
+
+BACKEND:
+├─ Runtime: Node.js
+├─ Framework: Express.js
+├─ Database: MongoDB Atlas
+├─ Authentication: JWT (jsonwebtoken)
+├─ File Upload: Cloudinary
+├─ Email: Nodemailer (Gmail)
+├─ Payment: Razorpay SDK
+├─ Shipping: Blue Dart, Delhivery, DHL APIs
+├─ Security: Helmet, CORS, helmet CSP
+├─ Performance: Compression
+└─ Task Scheduling: node-cron
+
+FRONTEND (my-app/):
+├─ Framework: React 18+
+├─ Build Tool: Vite
+├─ Router: TanStack React Router
+├─ State Management: Context API
+├─ Styling: CSS + components.json (UI components)
+├─ Language: TypeScript
+└─ API Client: Fetch API
+
+ADMIN (admin/):
+├─ Framework: React 18+
+├─ Build Tool: Vite
+├─ State Management: Local State + localStorage
+├─ Styling: CSS
+├─ Language: TypeScript
+├─ API Client: Fetch API
+└─ Components: Custom built
+
+
+================================================================================
+KEY FILES & THEIR PURPOSE
+================================================================================
+
+BACKEND:
+├─ server.js                    → Main entry point, Express setup
+├─ .env                         → Environment configuration
+├─ middleware/auth.js           → JWT verification middleware
+├─ models/*.js                  → Mongoose schemas
+├─ routes/*.js                  → API endpoints
+├─ services/
+│  ├─ notificationService.js   → Email sending logic
+│  ├─ shippingService.js       → Shipping logic
+│  └─ logistics/               → Provider implementations
+├─ cron/
+│  ├─ abandonedCheckoutCron.js → Cart recovery cron
+│  └─ trackingCron.js          → Tracking update cron
+└─ utils/
+   ├─ cloudinary.js            → Image upload utility
+   ├─ email.js                 → Email configuration
+   └─ notifications.js         → Notification helper
+
+FRONTEND (my-app/):
+├─ main.tsx                    → React entry point
+├─ router.tsx                  → TanStack router setup
+├─ App.tsx                     → Main app component
+├─ context/
+│  ├─ CurrencyContext.tsx      → Currency state
+│  ├─ ShopContext.tsx          → Shopping cart state
+│  └─ UserContext.tsx          → User profile state
+├─ routes/                     → Page components
+├─ components/                 → Reusable UI components
+└─ lib/
+   ├─ error-capture.ts         → Error handling
+   └─ utils.ts                 → Helper functions
+
+ADMIN (admin/):
+├─ main.tsx                    → React entry point
+├─ App.tsx                     → Main admin component
+├─ api.ts                      → API call helpers
+├─ Dashboard.tsx               → Main admin panel
+├─ LoginPage.tsx               → Admin login
+├─ *Tab.tsx                    → Feature-specific pages
+│  ├─ ProductsTab.tsx          → Product management
+│  ├─ OrdersTab.tsx            → Order management
+│  ├─ CollectionsTab.tsx       → Collection management
+│  └─ ShippingTab.tsx          → Shipping management
+└─ *Form.tsx                   → Form components
+
+
+================================================================================
+SECURITY MEASURES
+================================================================================
+
+Backend:
+├─ JWT Token Authentication
+├─ Password Hashing (bcryptjs recommended practice)
+├─ CORS Protection
+├─ Helmet for HTTP headers
+├─ Environment variable isolation
+├─ Input validation
+├─ Rate limiting (consider implementing)
+├─ HTTPS in production
+└─ MongoDB index on sensitive fields
+
+Frontend:
+├─ XSS Protection (React auto-escapes)
+├─ CSRF Protection (via JWT token)
+├─ localStorage for token storage (consider httpOnly cookies)
+├─ No sensitive data in client-side code
+└─ HTTPS in production
+
+Admin:
+├─ JWT Token verification
+├─ Protected routes (check token in App.tsx)
+├─ Token expiration (implement if needed)
+├─ Admin-only operations check
+└─ Logout clears localStorage
+
+
+================================================================================
+PERFORMANCE OPTIMIZATION
+================================================================================
+
+Backend:
+├─ Compression middleware for response compression
+├─ Database indexes on frequently queried fields
+├─ Pagination for large datasets
+├─ Caching strategy (consider Redis)
+└─ CDN for static files (Cloudinary)
+
+Frontend:
+├─ Code splitting with Vite
+├─ Lazy loading routes
+├─ Image optimization via Cloudinary
+├─ CSS modules for scoped styling
+├─ React.memo for component optimization
+└─ Context API for global state (no prop drilling)
+
+Admin:
+├─ Vite build optimization
+├─ CSS minification
+└─ Lazy loading routes
+
+
+================================================================================
+MONITORING & LOGGING
+================================================================================
+
+Backend:
+├─ Console logs for debugging
+├─ Error logging (consider Winston/Morgan)
+├─ Database query logging
+├─ API request/response logging
+└─ Cron job execution logs
+
+Frontend:
+├─ Error boundary catches React errors
+├─ error-capture.ts handles errors
+└─ Console logging for debugging
+
+Suggested Tools:
+├─ ELK Stack (Elasticsearch, Logstash, Kibana)
+├─ Sentry for error tracking
+├─ NewRelic for performance monitoring
+└─ Datadog for comprehensive monitoring
+
+
+================================================================================
+TESTING WORKFLOW (Recommended)
+================================================================================
+
+Backend Unit Tests:
+├─ Test models and validation
+├─ Test utility functions
+└─ Test business logic
+
+Backend Integration Tests:
+├─ Test API endpoints
+├─ Test database operations
+└─ Mock external services
+
+Frontend Unit Tests:
+├─ Test components
+├─ Test hooks
+└─ Test utilities
+
+Frontend Integration Tests:
+├─ Test user workflows
+├─ Test API integration
+└─ Test routing
+
+Recommended Libraries:
+├─ Jest (testing framework)
+├─ Vitest (Vite-native testing)
+├─ Testing Library (component testing)
+├─ Supertest (API testing)
+└─ Mock Service Worker (API mocking)
+
+
+================================================================================
+TROUBLESHOOTING GUIDE
+================================================================================
+
+Issue: API calls fail with CORS error
+├─ Check: ALLOWED_ORIGINS in .env
+├─ Solution: Add frontend URL to ALLOWED_ORIGINS
+└─ Example: ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
+
+Issue: Database connection fails
+├─ Check: MONGODB_URI in .env
+├─ Solution: Verify MongoDB Atlas cluster IP whitelist
+└─ Test: Use MongoDB Compass to connect
+
+Issue: Email not sending
+├─ Check: EMAIL_USER and EMAIL_PASS in .env
+├─ Solution: Generate Gmail App Password (not regular password)
+├─ Enable: Less secure app access
+└─ Test: Send test email via POST /api/notifications/send
+
+Issue: Shipping provider API error
+├─ Check: API keys in .env
+├─ Solution: Verify credentials with logistics provider
+└─ Test: Use provider's test API endpoint
+
+Issue: Payment not being verified
+├─ Check: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET
+├─ Solution: Use correct key for environment (test/live)
+└─ Test: Use Razorpay test card numbers
+
+Issue: Images not uploading
+├─ Check: Cloudinary credentials
+├─ Solution: Verify API key and secret
+└─ Test: Use Cloudinary API directly
+
+
+================================================================================
+FUTURE ENHANCEMENTS
+================================================================================
+
+Recommended Features to Add:
+├─ User authentication & profiles
+├─ Wishlist functionality
+├─ Product reviews & ratings
+├─ Search & filtering
+├─ Inventory management
+├─ Multiple payment methods
+├─ Order refunds workflow
+├─ Admin reports & analytics
+├─ Customer support tickets
+├─ Live chat support
+├─ Push notifications
+├─ Mobile app (React Native)
+├─ Subscription orders
+├─ Loyalty program
+├─ Multi-language support
+└─ Advanced analytics dashboard
+
+
+================================================================================
+END OF WORKFLOW DOCUMENTATION
+================================================================================
