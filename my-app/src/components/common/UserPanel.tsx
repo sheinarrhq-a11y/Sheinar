@@ -37,7 +37,7 @@ export function UserPanel() {
 
     try {
       const data = await signInWithGoogle(response.credential);
-      login(data.user.name, data.user.email);
+      login(data.user.name, data.user.email, undefined, data.token, data.user.avatar);
       setUserPanelOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed.");

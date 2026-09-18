@@ -59,7 +59,7 @@ type UserState = {
   userPanelOpen: boolean;
   addresses: Address[];
   orders: Order[];
-  login: (name: string, email: string, phone?: string) => void;
+  login: (name: string, email: string, phone?: string, token?: string, avatar?: string) => void;
   logout: () => void;
   updateProfile: (data: Partial<Pick<User, "name" | "email" | "phone">>) => void;
   toggleWishlist: (id: string) => void;
@@ -145,6 +145,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     };
     localStorage.setItem("sheinar_user", JSON.stringify(newUser));
     if (token) localStorage.setItem("sheinar_token", token);
+    else localStorage.removeItem("sheinar_token");
     const savedWishlist = JSON.parse(localStorage.getItem(storageKey(id)) || "[]") as string[];
     const savedAddresses = JSON.parse(localStorage.getItem(addrKey(id)) || "[]") as Address[];
     const savedOrders = JSON.parse(localStorage.getItem(ordersKey(id)) || "[]") as Order[];

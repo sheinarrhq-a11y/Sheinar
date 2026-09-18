@@ -36,12 +36,15 @@ function AccountPage() {
 
     const fetchOrders = async () => {
       try {
+        const authToken = user.authToken || localStorage.getItem("sheinar_token");
         const res = await fetch(`${API}/orders/customer?email=${encodeURIComponent(user.email)}`, {
-          headers: user.authToken ? { Authorization: `Bearer ${user.authToken}` } : {},
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         });
         if (res.ok) {
           const data = await res.json();
           setOrders(Array.isArray(data) ? data : data.orders || []);
+        } else {
+          setOrders([]);
         }
       } catch (error) {
         console.error("Failed to fetch orders:", error);

@@ -42,6 +42,10 @@ function calculateTotal(subtotal, shippingCost, tax) {
   return roundCents(subtotal + roundCents(shippingCost) + roundCents(tax));
 }
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // ── Currency conversion rates (base: INR) ────────────────
 // Update these periodically or swap with a live-rates API
 const FX = {
@@ -218,7 +222,9 @@ router.get("/customer", customerAuth, customerOrderLimiter, async (req, res) => 
     const email = String(req.query.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ error: "Email is required." });
     if (email !== String(req.customer.email).trim().toLowerCase()) return res.status(403).json({ error: "You may only access your own orders." });
-    const orders = await Order.find({ "customer.email": email }).sort({ createdAt: -1 }).lean();
+    const orders = await Order.find({
+      "customer.email": { $regex: new RegExp(`^${escapeRegex(email)}$`, "i") },
+    }).sort({ createdAt: -1 }).lean();
     res.json({ orders });
   } catch (err) {
     res.status(500).json({ error: "Unable to load orders." });
