@@ -99,7 +99,7 @@ function PrivacyPolicyPage() {
           <motion.section initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }}>
             <h2 className="font-serif text-lg text-foreground mb-3">Contact Us</h2>
             <p className="font-serif italic text-mocha leading-relaxed alias text-[14px]">
-              If you have questions about this Privacy Policy or our privacy practices, please contact us at <strong>sheinarrhq@gmail.com</strong> or call <strong>+91 7719666903</strong>.
+              If you have questions about this Privacy Policy or our privacy practices, please contact us at <strong>sheinarrhq@gmail.com</strong> or call <strong>+91 7719490036</strong>.
             </p>
           </motion.section>
 

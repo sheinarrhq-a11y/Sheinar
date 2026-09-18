@@ -495,7 +495,7 @@ function ProductPage() {
       icon: Info, label: "The Maker",
       lines: tabLines(p.manufacturer) || [
         "· Manufactured & Packaged by: Sheinar   ,  Mohali, India.",
-        "· For feedback and complaints, email us at sheinarrhq@gmail.com or call +917719666903.",
+        "· For feedback and complaints, email us at sheinarrhq@gmail.com or call +917719490036.",
         "· Country of Origin — India",
       ],
     },

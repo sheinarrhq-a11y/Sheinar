@@ -27,7 +27,7 @@ function footer() {
     ${HR}
     <p style="font-size:11px;color:#aaa;text-align:center;line-height:1.8;">
       Sheinar   ,  Mohali, India<br/>
-      <a href="mailto:sheinarrhq@gmail.com" style="color:#b08d57;text-decoration:none;">sheinarrhq@gmail.com</a> &nbsp;·&nbsp; +917719666903
+      <a href="mailto:sheinarrhq@gmail.com" style="color:#b08d57;text-decoration:none;">sheinarrhq@gmail.com</a> &nbsp;·&nbsp; +917719490036
     </p>
   `;
 }

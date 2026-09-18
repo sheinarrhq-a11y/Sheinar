@@ -98,7 +98,7 @@ function AccessibilityPage() {
             </p>
             <div className="space-y-2">
               <p className="font-serif italic text-mocha"><strong>Email:</strong> sheinarrhq@gmail.com</p>
-              <p className="font-serif italic text-mocha"><strong>Phone:</strong> +91 7719666903</p>
+              <p className="font-serif italic text-mocha"><strong>Phone:</strong> +91 7719490036</p>
               <p className="font-serif italic text-mocha"><strong>Hours:</strong> Mon-Fri 06:00-22:00 IST, Sat 09:30-18:00 IST</p>
             </div>
           </motion.section>

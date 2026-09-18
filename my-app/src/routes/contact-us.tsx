@@ -41,8 +41,8 @@ function ContactUsPage() {
             {
               icon: Phone,
               label: "Phone",
-              value: "+91 7719666903",
-              href: "tel:+917719666903",
+              value: "+91 7719490036",
+              href: "tel:+917719490036",
             },
             {
               icon: MapPin,
@@ -54,7 +54,7 @@ function ContactUsPage() {
               icon: MessageCircle,
               label: "WhatsApp",
               value: "Start a Conversation",
-              href: "https://wa.me/916239315288?text=Hello%20Sheinar%2C%20I%27d%20love%20to%20know%20more%20about%20your%20collections%20and%20receive%20assistance%20with%20my%20order.",
+              href: "https://wa.me/917719490036?text=Hello%20Sheinar%2C%20I%27d%20love%20to%20know%20more%20about%20your%20collections%20and%20receive%20assistance%20with%20my%20order.",
             },
           ].map((item, idx) => (
             <motion.a

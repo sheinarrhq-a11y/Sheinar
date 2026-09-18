@@ -75,7 +75,7 @@ function ReturnsCancellationsPage() {
         <p className="font-serif italic text-mocha leading-relaxed">
           If you have any queries related to cancellation, refunds, credit
           notes, products or your order, kindly call or WhatsApp us at
-          +91 6239315288.
+          +91 7719490036.
         </p>
       </section>
 

@@ -19,9 +19,9 @@ function OurStorePage() {
   const store = {
     name: "Sheinar   ",
     address: " Mohali, India",
-    phone: "+91 7719666903",
+    phone: "+91 7719490036",
     email: "sheinarrhq@gmail.com",
-    hours: "12:00 PM – 8:00 PM",
+    hours: "1:00 PM – 8:00 PM",
     days: "Monday – Saturday",
     description: "An intimate    where heritage craftsmanship meets modern luxury. Every consultation is curated for discerning clients who seek timeless elegance.",
     specialties: [

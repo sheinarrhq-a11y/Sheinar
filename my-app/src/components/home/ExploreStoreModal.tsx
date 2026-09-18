@@ -8,7 +8,7 @@ const stores = [
     city: "Mohali, SAS Nagar",
     // label: "Flagship   ",
     address: "H.No. 01, Sector 69, Mohali, SAS Nagar, Punjab",
-    phone: "+917719666903",
+    phone: "+917719490036",
     email: " @sheinar.com",
     hours: [
       { day: "Mon – Sat", time: "10:00 AM – 7:00 PM" },

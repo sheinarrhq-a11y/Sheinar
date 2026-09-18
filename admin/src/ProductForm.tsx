@@ -50,7 +50,7 @@ export default function ProductForm({ product, onSaved, onCancel }: Props) {
   const [details, setDetails] = useState<string[]>(product?.details ?? [""]);
   const [shipping, setShipping] = useState(product?.shipping ?? "· Sheinar ships across the world via BlueDart, DTDC, DHL, UBX or FedEx express services.\n· Deliveries within India take roughly 3–5 working days.\n· Domestic shipping within India is complimentary.");
   const [care, setCare] = useState(product?.care ?? "· Store carefully, away from the sun, dust, and moisture, preferably in muslin cloth.\n· Dry-clean only when required.\n· Avoid ironing directly on the zari.");
-  const [manufacturer, setManufacturer] = useState(product?.manufacturer ?? "· Manufactured & Packaged by: Sheinar   ,  Mohali, India.\n· For feedback: sheinarrhq@gmail.com | +917719666903\n· Country of Origin — India");
+  const [manufacturer, setManufacturer] = useState(product?.manufacturer ?? "· Manufactured & Packaged by: Sheinar   ,  Mohali, India.\n· For feedback: sheinarrhq@gmail.com | +917719490036\n· Country of Origin — India");
   const [dimensions, setDimensions] = useState(product?.dimensions ?? "· Saree — L 5.4 m × W 1.1 m\n· All garments are made to order.");
   const [sortOrder, setSortOrder] = useState(product?.sortOrder?.toString() ?? "0");
   const [weightKg, setWeightKg] = useState(product?.weightKg?.toString() ?? "0.5");
