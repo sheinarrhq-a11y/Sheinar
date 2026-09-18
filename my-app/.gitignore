@@ -25,3 +25,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+
+node_modules/
+.env
+.env.*
+!.env.development
+!.env.production
+!.env.test.example
+dist/
+*.log
