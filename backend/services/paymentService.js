@@ -374,7 +374,7 @@ async function processWebhook({ eventId, eventType, payload }) {
 async function getPaymentStatus({ attemptId, accessToken }) {
   let attempt = await PaymentAttempt.findById(attemptId);
   if (!attempt || !safeEqual(attempt.accessTokenHash, hashToken(accessToken))) throw publicError("Payment attempt not found.", 404);
-  if (["created", "checkout_open", "pending"].includes(attempt.status) && attempt.razorpayOrderId && typeof razorpay.orders.fetchPayments === "function") {
+  if (["created", "checkout_open", "pending", "authorized"].includes(attempt.status) && attempt.razorpayOrderId && typeof razorpay.orders.fetchPayments === "function") {
     try {
       const gatewayPayments = await razorpay.orders.fetchPayments(attempt.razorpayOrderId);
       const payment = gatewayPayments?.items?.find((entry) => ["authorized", "captured"].includes(entry.status) && entry.amount === attempt.gatewayAmount && entry.currency === attempt.chargedCurrency);

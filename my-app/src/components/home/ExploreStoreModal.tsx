@@ -9,7 +9,7 @@ const stores = [
     // label: "Flagship   ",
     address: "H.No. 01, Sector 69, Mohali, SAS Nagar, Punjab",
     phone: "+917719490036",
-    email: " @sheinar.com",
+    email: " @sheinar.co",
     hours: [
       { day: "Mon – Sat", time: "10:00 AM – 7:00 PM" },
       { day: "Sunday", time: "11:00 AM – 5:00 PM" },
@@ -21,7 +21,7 @@ const stores = [
   //   label: "     ",
   //   address: "Shop 4, Kala Ghoda Arts District, Fort,   , Maharashtra — 400001",
   //   phone: "+91 98151 55394",
-  //   email: "  @sheinar.com",
+  //   email: "  @sheinar.co",
   //   hours: [
   //     { day: "Mon – Sat", time: "11:00 AM – 8:00 PM" },
   //     { day: "Sunday", time: "12:00 PM – 6:00 PM" },

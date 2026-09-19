@@ -43,6 +43,22 @@ async function processRecord(checkout) {
   await checkout.save();
 }
 
+async function runAbandonedCheckoutCron() {
+  const since = new Date();
+  const records = await AbandonedCheckout.find({ status: "active", expiresAt: { $gt: since } })
+    .where("nextReminderAt").lte(new Date())
+    .limit(100);
+
+  for (const record of records) {
+    try {
+      await processRecord(record);
+    } catch (err) {
+      console.error("Abandoned checkout cron entry failed:", err);
+    }
+  }
+  return { processed: records.length };
+}
+
 function startAbandonedCheckoutCron() {
   cron.schedule("*/10 * * * *", async () => {
     try {
@@ -50,22 +66,11 @@ function startAbandonedCheckoutCron() {
         console.warn("Abandoned checkout cron skipped: MongoDB is not connected.");
         return;
       }
-      const since = new Date();
-      const records = await AbandonedCheckout.find({ status: "active", expiresAt: { $gt: since } })
-        .where("nextReminderAt").lte(new Date())
-        .limit(100);
-
-      for (const record of records) {
-        try {
-          await processRecord(record);
-        } catch (err) {
-          console.error("Abandoned checkout cron entry failed:", err);
-        }
-      }
+      await runAbandonedCheckoutCron();
     } catch (err) {
       console.error("Abandoned checkout cron failed:", err);
     }
   }, { scheduled: true, timezone: process.env.TIMEZONE || "UTC" });
 }
 
-module.exports = { startAbandonedCheckoutCron };
+module.exports = { startAbandonedCheckoutCron, runAbandonedCheckoutCron };

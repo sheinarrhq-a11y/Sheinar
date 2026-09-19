@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Sheinar Express backend on AWS Lambda
+
+Parameters:
+  MongoDbUri:
+    Type: String
+    NoEcho: true
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  EmailUser:
+    Type: String
+    NoEcho: true
+  EmailPass:
+    Type: String
+    NoEcho: true
+  EmailHost:
+    Type: String
+    Default: ''
+  EmailPort:
+    Type: String
+    Default: '587'
+  EmailSecure:
+    Type: String
+    Default: 'false'
+  RazorpayKeyId:
+    Type: String
+    NoEcho: true
+  RazorpayKeySecret:
+    Type: String
+    NoEcho: true
+  RazorpayWebhookSecret:
+    Type: String
+    NoEcho: true
+  AllowedOrigins:
+    Type: String
+  FrontendUrl:
+    Type: String
+    Default: http://localhost:5173
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 1024
+    Environment:
+      Variables:
+        NODE_ENV: production
+        MONGODB_URI: !Ref MongoDbUri
+        JWT_SECRET: !Ref JwtSecret
+        EMAIL_USER: !Ref EmailUser
+        EMAIL_PASS: !Ref EmailPass
+        EMAIL_HOST: !Ref EmailHost
+        EMAIL_PORT: !Ref EmailPort
+        EMAIL_SECURE: !Ref EmailSecure
+        RAZORPAY_KEY_ID: !Ref RazorpayKeyId
+        RAZORPAY_KEY_SECRET: !Ref RazorpayKeySecret
+        RAZORPAY_WEBHOOK_SECRET: !Ref RazorpayWebhookSecret
+        ALLOWED_ORIGINS: !Ref AllowedOrigins
+        FRONTEND_URL: !Ref FrontendUrl
+
+Resources:
+  BackendApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      CorsConfiguration:
+        AllowOrigins: !Split [',', !Ref AllowedOrigins]
+        AllowHeaders:
+          - content-type
+          - authorization
+          - idempotency-key
+          - x-razorpay-signature
+          - x-payment-access-token
+        AllowMethods:
+          - '*'
+        AllowCredentials: true
+
+  BackendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: lambda.handler
+      Events:
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BackendApi
+            Path: /
+            Method: ANY
+        Proxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BackendApi
+            Path: /{proxy+}
+            Method: ANY
+
+  AbandonedCheckoutCron:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: scheduledHandlers.abandonedCheckout
+      Events:
+        EveryTenMinutes:
+          Type: Schedule
+          Properties:
+            Schedule: rate(10 minutes)
+            Name: sheinar-abandoned-checkout-every-10-minutes
+            Description: Process abandoned checkout reminders
+            Enabled: true
+
+  TrackingCron:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: scheduledHandlers.tracking
+      Events:
+        EveryThirtyMinutes:
+          Type: Schedule
+          Properties:
+            Schedule: rate(30 minutes)
+            Name: sheinar-tracking-every-30-minutes
+            Description: Refresh active shipment tracking
+            Enabled: true
+
+Outputs:
+  ApiUrl:
+    Description: Public HTTPS URL for the backend
+    Value: !Sub https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com

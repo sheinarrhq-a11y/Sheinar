@@ -33,6 +33,7 @@ const { startAbandonedCheckoutCron } = require("./cron/abandonedCheckoutCron");
 const { startTrackingCron } = require("./cron/trackingCron");
 
 const app = express();
+let mongoConnectionPromise;
 
 app.disable("x-powered-by");
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -87,18 +88,30 @@ function validateRuntimeSecrets() {
 }
 
 async function startServer() {
-  validateRuntimeSecrets();
-  await mongoose.connect(process.env.MONGODB_URI, {
-    serverSelectionTimeoutMS: 10000,
-    family: 4,
-  });
-  console.log("MongoDB connected");
+  await connectToDatabase();
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT} [${env}]`);
     startAbandonedCheckoutCron();
     startTrackingCron();
   });
+}
+
+async function connectToDatabase() {
+  validateRuntimeSecrets();
+  if (mongoose.connection.readyState === 1) return;
+  if (!mongoConnectionPromise) {
+    mongoConnectionPromise = mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000,
+      family: 4,
+    }).then(() => {
+      console.log("MongoDB connected");
+    }).catch((error) => {
+      mongoConnectionPromise = undefined;
+      throw error;
+    });
+  }
+  await mongoConnectionPromise;
 }
 
 if (require.main === module) {
@@ -108,4 +121,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, startServer };
+module.exports = { app, startServer, connectToDatabase };

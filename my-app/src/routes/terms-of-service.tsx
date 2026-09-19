@@ -48,7 +48,7 @@ function TermsOfServicePage() {
             },
             {
               title: "8. Price Disclaimer",
-              content: "While sheinar.com makes every effort to ensure that the products are described and priced accurately, in the event that an item is deemed to be priced incorrectly, sheinar.com reserves the right to refuse the sale of that item.",
+              content: "While sheinar.co makes every effort to ensure that the products are described and priced accurately, in the event that an item is deemed to be priced incorrectly, sheinar.co reserves the right to refuse the sale of that item.",
             },
             {
               title: "9. Force Majeure",

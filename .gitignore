@@ -9,6 +9,8 @@ node_modules/
 **/node_modules/
 dist/
 **/dist/
+packaged.yaml
+.aws-sam/
 coverage/
 **/coverage/
 

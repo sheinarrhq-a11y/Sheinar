@@ -238,7 +238,15 @@ export function Checkout() {
         }),
       });
       const order = await res.json();
-      if (!res.ok) throw new Error(order.error || "Unable to start payment.");
+      if (!res.ok) {
+        if (res.status === 409 && order.status === "authorized") {
+          throw new Error("Your previous payment is authorized and is being reconciled. Please wait a moment and refresh this checkout.");
+        }
+        if (res.status === 409) {
+          throw new Error(order.error || "A payment session is already open for this cart. Return to the original checkout tab or wait for it to expire.");
+        }
+        throw new Error(order.error || "Unable to start payment.");
+      }
       attempt = { attemptId: order.attemptId, accessToken: order.accessToken };
       setPaymentAttempt(attempt);
       savePaymentAttempt(attempt);
@@ -308,26 +316,186 @@ export function Checkout() {
   // ── Confirmed ──
   if (confirmed) {
     return (
-      <SiteLayout>
-        <div className="min-h-[80vh] flex flex-col items-center justify-center text-center px-6">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}>
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2, type: "spring", stiffness: 200 }}>
-              <CheckCircle2 className="h-16 w-16 text-accent mx-auto mb-6" strokeWidth={1} />
-            </motion.div>
-            <span className="lux-eyebrow block mb-4">Order Confirmed</span>
-            <div className="lux-divider mx-auto mb-6" />
-            <h2 className="font-serif text-4xl md:text-5xl text-foreground mb-4">Thank you, {info.firstName}.</h2>
-            <p className="font-serif italic text-mocha max-w-md mx-auto mb-3 leading-relaxed">
-              Your order has been placed. Our atelier will reach out within 24 hours with your order details and timeline.
+<SiteLayout>
+  <div className="relative min-h-[85vh] overflow-hidden flex items-center justify-center px-6 py-24">
+    
+    {/* Subtle luxury background */}
+    <div className="absolute inset-0 pointer-events-none">
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] rounded-full bg-accent/[0.04] blur-3xl" />
+      <div className="absolute inset-0 opacity-[0.025] bg-[radial-gradient(circle_at_center,_currentColor_1px,_transparent_1px)] [background-size:24px_24px]" />
+    </div>
+
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.8, ease: "easeOut" }}
+      className="relative z-10 w-full max-w-2xl text-center"
+    >
+
+      {/* Success Icon */}
+      <motion.div
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{
+          delay: 0.2,
+          duration: 0.6,
+          type: "spring",
+          stiffness: 160,
+        }}
+        className="relative mx-auto mb-8 flex h-24 w-24 items-center justify-center"
+      >
+        <div className="absolute inset-0 rounded-full border border-accent/20" />
+        
+        <motion.div
+          initial={{ scale: 0.7 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.35, duration: 0.5 }}
+          className="h-16 w-16 rounded-full border border-accent/40 flex items-center justify-center bg-background"
+        >
+          <CheckCircle2
+            className="h-9 w-9 text-accent"
+            strokeWidth={1}
+          />
+        </motion.div>
+      </motion.div>
+
+      {/* Eyebrow */}
+      <motion.span
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.45 }}
+        className="lux-eyebrow block mb-5"
+      >
+        Order Confirmed
+      </motion.span>
+
+      <div className="lux-divider mx-auto mb-7" />
+
+      {/* Main heading */}
+      <motion.h1
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5, duration: 0.6 }}
+        className="font-serif text-4xl md:text-6xl text-foreground leading-tight mb-5"
+      >
+        Thank you, {info.firstName}.
+      </motion.h1>
+
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.65 }}
+        className="font-serif italic text-lg md:text-xl text-mocha max-w-xl mx-auto leading-relaxed"
+      >
+        Your order has been beautifully received.
+        <br className="hidden sm:block" />
+        Our atelier will now begin preparing your piece.
+      </motion.p>
+
+      {/* Order information */}
+      {orderNumber && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8 }}
+          className="mt-10 mx-auto max-w-md border border-border/70 bg-background/70 backdrop-blur-sm px-7 py-6"
+        >
+          <p className="font-sans text-[10px] tracking-[0.25em] uppercase text-muted-foreground mb-2">
+            Your Order
+          </p>
+
+          <p className="font-serif text-xl tracking-wide text-foreground">
+            {orderNumber}
+          </p>
+
+          <div className="h-px bg-border/60 my-5" />
+
+          <div className="flex items-center justify-center gap-3 text-muted-foreground">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            <p className="font-sans text-[10px] tracking-[0.18em] uppercase">
+              Atelier Processing
             </p>
-            {orderNumber && <p className="font-sans text-xs tracking-widest uppercase text-accent mb-2">Order · {orderNumber}</p>}
-            <p className="font-sans text-xs tracking-widest uppercase text-muted-foreground mb-10">
-              A confirmation has been sent to {info.email}
-            </p>
-            <Link to="/" className="lux-btn">Return to Maison</Link>
-          </motion.div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* What happens next */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.95 }}
+        className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-xl mx-auto text-left"
+      >
+        <div>
+          <p className="font-serif text-base mb-1">01 · Confirmation</p>
+          <p className="font-sans text-xs text-muted-foreground leading-relaxed">
+            Your order details have been securely recorded.
+          </p>
         </div>
-      </SiteLayout>
+
+        <div>
+          <p className="font-serif text-base mb-1">02 · Atelier</p>
+          <p className="font-sans text-xs text-muted-foreground leading-relaxed">
+            Our team will review your order and requirements.
+          </p>
+        </div>
+
+        <div>
+          <p className="font-serif text-base mb-1">03 · Creation</p>
+          <p className="font-sans text-xs text-muted-foreground leading-relaxed">
+            You will receive your timeline and next steps.
+          </p>
+        </div>
+      </motion.div>
+
+      {/* Email confirmation */}
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.1 }}
+        className="font-sans text-[10px] tracking-[0.14em] uppercase text-muted-foreground mt-10"
+      >
+        A confirmation has been sent to{" "}
+        <span className="text-foreground">
+          {info.email}
+        </span>
+      </motion.p>
+
+      {/* Actions */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.2 }}
+        className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
+      >
+        <Link
+          to="/"
+          className="lux-btn min-w-[190px]"
+        >
+          Return to Maison
+        </Link>
+
+        <Link
+          to="/collections"
+          className="inline-flex items-center justify-center min-w-[190px] px-6 py-3 border border-border font-sans text-xs tracking-[0.18em] uppercase hover:bg-foreground hover:text-background transition-all duration-300"
+        >
+          Explore Collection
+        </Link>
+      </motion.div>
+
+      {/* Closing line */}
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.35 }}
+        className="font-serif italic text-sm text-muted-foreground mt-12"
+      >
+        Crafted with intention. Created for you.
+      </motion.p>
+
+    </motion.div>
+  </div>
+</SiteLayout>
     );
   }
 

@@ -1,12 +1,50 @@
 const nodemailer = require("nodemailer");
+const Notification = require("../models/Notification");
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  ...(process.env.EMAIL_HOST
+    ? {
+        host: process.env.EMAIL_HOST,
+        port: Number(process.env.EMAIL_PORT || 587),
+        secure: String(process.env.EMAIL_SECURE).toLowerCase() === "true",
+      }
+    : { service: "gmail" }),
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
 });
+
+async function sendWithRetry(message, label) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await transporter.sendMail(message);
+    } catch (error) {
+      lastError = error;
+      console.error(`Email attempt ${attempt} failed for ${label}:`, error?.message || error);
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
+  }
+  throw lastError;
+}
+
+async function logOrderEmail({ order, recipient, subject, status, error = "" }) {
+  try {
+    await Notification.create({
+      orderId: order._id,
+      customerEmail: recipient,
+      channel: "email",
+      type: "order-confirmation",
+      subject,
+      status,
+      error,
+      metadata: { orderNumber: order.orderNumber },
+    });
+  } catch (logError) {
+    console.error("Could not log order email notification:", logError.message);
+  }
+}
 
 // ── Shared styles ─────────────────────────────────────────
 const BASE = `max-width:600px;margin:0 auto;font-family:Georgia,serif;color:#1a1a1a;padding:40px 20px;background:#fff;`;
@@ -125,20 +163,9 @@ async function sendOrderConfirmationEmail(order) {
     </div>
   `;
 
-  // To customer
-  await transporter.sendMail({
-    from: `"Sheinar   " <${process.env.EMAIL_USER}>`,
-    to: customer.email,
-    subject: `Order Confirmed · ${orderNumber} — Sheinar`,
-    html,
-  });
-
-  // To admin
-  await transporter.sendMail({
-    from: `"Sheinar Orders" <${process.env.EMAIL_USER}>`,
-    to: process.env.ADMIN_EMAIL,
-    subject: `New Order · ${orderNumber} — ${customer.firstName} ${customer.lastName || ""}`,
-    html: `
+  const customerSubject = `Order Confirmed · ${orderNumber} — Sheinar`;
+  const adminSubject = `New Order · ${orderNumber} — ${customer.firstName} ${customer.lastName || ""}`;
+  const adminHtml = `
       <div style="${BASE}">
         ${header()}
         <h2 style="font-size:18px;font-weight:normal;">New Order Received</h2>
@@ -148,8 +175,25 @@ async function sendOrderConfirmationEmail(order) {
         <table style="width:100%;border-collapse:collapse;">${itemsHtml}</table>
         ${footer()}
       </div>
-    `,
-  });
+    `;
+
+  const messages = [
+    { recipient: customer.email, subject: customerSubject, html, label: `order-customer:${orderNumber}` },
+    { recipient: process.env.ADMIN_EMAIL, subject: adminSubject, html: adminHtml, label: `order-admin:${orderNumber}` },
+  ];
+  const failures = [];
+  for (const message of messages) {
+    if (!message.recipient) continue;
+    try {
+      await sendWithRetry({ from: `"Sheinar Orders" <${process.env.EMAIL_USER}>`, to: message.recipient, subject: message.subject, html: message.html }, message.label);
+      await logOrderEmail({ order, recipient: message.recipient, subject: message.subject, status: "sent" });
+    } catch (error) {
+      const errorMessage = error?.message || String(error);
+      failures.push(errorMessage);
+      await logOrderEmail({ order, recipient: message.recipient, subject: message.subject, status: "failed", error: errorMessage });
+    }
+  }
+  if (failures.length) throw new Error(`Order email delivery failed: ${failures.join("; ")}`);
 }
 
 // ── Order Status Update Email ─────────────────────────────

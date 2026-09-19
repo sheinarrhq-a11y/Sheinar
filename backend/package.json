@@ -14,6 +14,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@vendia/serverless-express": "^4.12.6",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.5.1",
     "compression": "^1.7.4",
